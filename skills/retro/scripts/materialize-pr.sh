@@ -58,10 +58,11 @@ finish)
     git -C "$wt" add -- "$@"
     git -C "$wt" commit -S --signoff -m "$title"
     git -C "$wt" push -u origin "$branch"
-    # --head: gh otherwise takes the branch of the caller's cwd, which is not
-    # this worktree.
-    gh pr create --title "$title" --body-file "$body" --head "$branch" \
-        --repo "$(git -C "$wt" remote get-url origin | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')"
+    # From the worktree, and with --head: gh otherwise takes the head branch
+    # and its gh-merge-base (the PR's base) from the caller's checkout.
+    repo_slug=$(git -C "$wt" remote get-url origin | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')
+    body=$(cd "$(dirname "$body")" && pwd)/$(basename "$body")
+    (cd "$wt" && gh pr create --title "$title" --body-file "$body" --head "$branch" --repo "$repo_slug")
     ;;
 *)
     die "usage: materialize-pr.sh start <repo-dir> <branch> | finish <worktree-dir> <title> <body-file> <file>..."

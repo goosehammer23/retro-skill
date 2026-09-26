@@ -160,15 +160,17 @@ class MaterializePrTest(unittest.TestCase):
         worktree = Path(started.stdout.strip())
         self.assertTrue(worktree.is_absolute(), worktree)
         (worktree / "a.txt").write_text("a\n", encoding="utf-8")
-        body = self.tmp / "body.md"
-        body.write_text("body\n", encoding="utf-8")
-        result = self._run("finish", str(worktree), "feat: a", str(body), "a.txt")
+        (self.tmp / "body.md").write_text("body\n", encoding="utf-8")
+        # Relative to the caller's cwd; gh runs in the worktree, so the script
+        # must hand it an absolute path.
+        result = self._run("finish", str(worktree), "feat: a", "body.md", "a.txt")
         self.assertEqual(result.returncode, 0, result.stderr)
-        args = [
-            line[4:]
-            for line in self.gh_log.read_text(encoding="utf-8").splitlines()
-            if line.startswith("arg=")
-        ]
+        log = self.gh_log.read_text(encoding="utf-8").splitlines()
+        # gh reads the base (gh-merge-base) from the checkout it runs in.
+        self.assertIn(f"cwd={worktree}", log)
+        args = [line[4:] for line in log if line.startswith("arg=")]
+        body_arg = args[args.index("--body-file") + 1]
+        self.assertEqual(Path(body_arg).read_text(encoding="utf-8"), "body\n")
         self.assertIn("--head", args)
         self.assertEqual(args[args.index("--head") + 1], "feat/x")
         self.assertEqual(
