@@ -48,7 +48,6 @@ SAMPLES = {
     "jwt": "jwt eyJ" + "hbGciOiJI" + ".eyJ" + "zdWIiOiIx" + "." + "SflKxwRJ" * 3,
     "url_credentials": "https://oauth2:" + "s3cr" * 5 + "@git.example.org/g/r.git",
     "private_token_header": "curl -H 'PRIVATE-" + "TOKEN: " + "tok3" * 6 + "' x",
-    "curl_user": "curl -u sebastian:" + "hunt3r" * 3 + " https://x.example.org",
     "vault_token": "VAULT_TOKEN=hvs." + "CAES" + "Qx7" * 8,
     "npm_token": "npm_" + "Zx8" * 12,
     "google_api_key": "key AIza" + "Sy" + "Kq9" * 11,
@@ -66,7 +65,6 @@ SECRET_PART = {
     "jwt": "SflKxwRJ",
     "url_credentials": "s3cr",
     "private_token_header": "tok3tok3",
-    "curl_user": "hunt3r",
     "vault_token": "Qx7Qx7",
     "npm_token": "Zx8Zx8",
     "google_api_key": "Kq9Kq9",
@@ -151,9 +149,32 @@ class AlternativesTest(unittest.TestCase):
             ms.mask("https://user:p@" + "ss9x@host/"), "https://[REDACTED]@host/"
         )
 
+    def test_curl_user_password_is_masked(self):
+        """Not an alternative (see mask-secrets.py): its own pass, its own test."""
+        password = "hunt3r" * 3
+        self.assertEqual(
+            ms.mask(f"curl -u sebastian:{password} https://x.example.org"),
+            "curl -u sebastian:[REDACTED] https://x.example.org",
+        )
+        self.assertNotIn(password, ms.squeeze(f"curl -u sebastian:{password}", 1000))
+
+    def test_other_secrets_in_a_curl_command_with_a_user_are_masked(self):
+        """A curl match that kept `curl … -u` readable shipped every secret in
+        that span in clear: bearer tokens, credentialed URLs, GitLab tokens."""
+        password = "s3cret" + "Pw" * 4
+        for secret, text in (
+            ("tk9" * 10, 'curl -H "Authorization: Bearer {s}" -u alice:{p} x'),
+            ("tok7" * 6, "curl https://u:{s}@host/x -u alice:{p}"),
+            ("glpat-" + "a1" * 12, "curl -H 'PRIVATE-TOKEN: {s}' -u alice:{p} x"),
+        ):
+            with self.subTest(text):
+                out = ms.mask(text.format(s=secret, p=password))
+                self.assertNotIn(secret, out)
+                self.assertNotIn(password, out)
+
     def test_every_curl_user_option_is_masked(self):
-        """`curl_user` consumes the `curl` prefix, so a second `-u` needs its own
-        pass; a user without a password stays as it is."""
+        """Every user option of one curl command is masked, the short and the
+        `--user=` form; a user without a password stays as it is."""
         first, second = "pass1" + "x" * 8, "pass2" + "y" * 8
         self.assertEqual(
             ms.mask(f"curl -u alice:{first} --user=bob:{second} -u carol https://x"),

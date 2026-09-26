@@ -55,10 +55,6 @@ ALTERNATIVES: dict[str, str] = {
     # hold an `@`: the userinfo runs to the last `@` before the path.
     "url_credentials": r"(?P<url_credentials_keep>\b[A-Za-z][A-Za-z0-9+.-]*://)"
     r"[^\s/@:'\"]*:[^\s/'\"]+(?=@)",
-    # `curl -u user:password`: the password is masked, the user stays. Only
-    # after `curl`, so `docker run -u 1000:1000` keeps its ids.
-    "curl_user": r"(?P<curl_user_keep>\bcurl\b[^\n|;&]*?\s(?:-u|--user(?![\w-]))"
-    r"[\s=]*[\"']?[^\s:'\"]*:)(?!\$)[^\s'\"]+",
     "vault_token": r"\bhv[sbr]\.[A-Za-z0-9_-]{20,}",
     "npm_token": r"\bnpm_[A-Za-z0-9]{36}\b",
     "google_api_key": r"\bAIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])",
@@ -69,9 +65,12 @@ ALTERNATIVES: dict[str, str] = {
 
 SECRET = re.compile("|".join(f"(?P<{n}>{rx})" for n, rx in ALTERNATIVES.items()))
 
-# `curl_user` consumes `curl … -u`, so a second `-u user:pass` in the same
-# command cannot start a match of its own. This pass masks every user option
-# inside each curl command, up to the next shell separator.
+# `curl -u user:password`: the password is masked, the user stays; only inside
+# a curl command, so `docker run -u 1000:1000` keeps its ids. This cannot be an
+# alternative above: it would have to consume `curl … -u` as readable context,
+# and every other secret in that span (`-H "Authorization: Bearer …"`, a
+# credentialed URL) would then ship in clear, as would a second `-u`. So it is
+# a pass of its own over each curl command, after the alternatives have run.
 CURL_COMMAND = re.compile(r"\bcurl\b[^\n|;&]*")
 CURL_USER_OPTION = re.compile(
     r"(?P<keep>\s(?:-u|--user(?![\w-]))[\s=]*[\"']?[^\s:'\"]*:)(?!\$)[^\s'\"]+"
