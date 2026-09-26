@@ -605,6 +605,52 @@ class ReviewFixesParseTest(unittest.TestCase):
         found = crf.parse_github_pr(_pr(reviews=reviews), set())["findings"]
         self.assertEqual([f["body"] for f in found], ["SQL injection in x.php"])
 
+    def test_a_rebased_commit_written_before_the_thread_is_not_its_fix(self):
+        # TYPO3-Documentation/TYPO3CMS-Guide-HowToDocument#571: the thread was
+        # opened 2026-09-22, the branch was rebased 2026-09-26. The first two
+        # commits were written 2026-09-17; only 5f5f9e9a answered the thread.
+        raw = _pr(threads=[{"isResolved": True, "comments": {"totalCount": 1, "nodes": [
+            _comment("linawolf", "User", "2026-09-22T14:40:28Z", "please show it"),
+        ]}}])  # fmt: skip
+        raw["data"]["repository"]["pullRequest"]["commits"]["nodes"] = [
+            {"commit": {"oid": oid, "authoredDate": authored, "committedDate": committed, "messageHeadline": "x"}}
+            for oid, authored, committed in [
+                ("5a258485", "2026-09-17T11:01:46Z", "2026-09-26T22:34:28Z"),
+                ("2c035170", "2026-09-17T11:38:30Z", "2026-09-26T22:34:28Z"),
+                ("5f5f9e9a", "2026-09-26T22:35:53Z", "2026-09-26T22:37:09Z"),
+            ]
+        ]  # fmt: skip
+        found = crf.parse_github_pr(raw, set())["findings"]
+        self.assertEqual([f["commit_after"] for f in found], ["5f5f9e9a"])
+
+    def test_a_rebased_gitlab_commit_written_before_the_thread_is_not_its_fix(self):
+        raw = _fixture("gitlab-mr.json")
+        # Both commits rebased after the 14:02 thread; a1b2c3d was written before it.
+        for commit, authored in zip(
+            raw["commits"][0],
+            ["2026-09-18T12:30:00.000+02:00", "2026-09-18T14:25:00.000+02:00"],
+        ):
+            commit["committed_date"] = "2026-09-18T15:00:00.000+02:00"
+            commit["authored_date"] = authored
+        thread = next(
+            f
+            for f in crf.parse_gitlab(raw, set())["findings"]
+            if f["body"].startswith("The variable check r")
+        )
+        self.assertEqual(
+            thread["commit_after"], "5b1e2c0d9f8e7a6b5c4d3e2f1a0b9c8d7e6f5a4b"
+        )
+
+    def test_without_an_author_date_after_the_thread_the_committer_date_decides(self):
+        commits = [
+            {"sha": "a", "date": datetime(2026, 9, 26, 12, tzinfo=timezone.utc),
+             "authored": datetime(2026, 9, 17, tzinfo=timezone.utc)},
+            {"sha": "b", "date": datetime(2026, 9, 26, 13, tzinfo=timezone.utc),
+             "authored": None},
+        ]  # fmt: skip
+        moment = datetime(2026, 9, 22, tzinfo=timezone.utc)
+        self.assertEqual(crf.first_commit_after(commits, moment), "a")
+
     def test_more_commits_than_read_is_named(self):
         self.assertIn(
             "commits", crf.parse_github_pr(_pr(commits_total=150), set())["truncated"]

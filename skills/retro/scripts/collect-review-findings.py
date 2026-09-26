@@ -32,8 +32,9 @@ token to whatever host it is given.
 Every finding carries `source`, `author_class` (`self` · `bot` · `human`),
 `resolved` where the forge says so, and `commit_after`: the first commit on
 the PR/MR dated after the finding. That is a necessary sign that the finding
-changed the code, not proof — any later commit qualifies, and a rebase re-dates
-them all. Read it together with `resolved` and `last_self_reply`.
+changed the code, not proof — any later commit qualifies. A rebase re-dates
+every commit it replays, so a commit whose author date is also after the
+finding is preferred. Read it together with `resolved` and `last_self_reply`.
 
 `self` is the account running the native readers (GitHub `viewer`, GitLab
 `user`) plus every `--self-login`. External integrations classify their own
@@ -198,10 +199,19 @@ def author_class(login: str | None, typename: str | None, self_logins: set[str])
 def first_commit_after(
     commits: list[dict[str, Any]], moment: datetime | None
 ) -> str | None:
-    """SHA of the earliest commit made after `moment`, or None."""
+    """SHA of the earliest commit made after `moment`, or None.
+
+    A rebase gives every replayed commit a new committer date, so on a rebased
+    branch the first commit qualifies even when it was written before the
+    finding. A commit whose author date is also after `moment` is preferred;
+    without one, the committer date alone decides.
+    """
     if moment is None:
         return None
     later = [c for c in commits if c["date"] and c["date"] > moment]
+    written = [c for c in later if c.get("authored") and c["authored"] > moment]
+    if written:
+        return min(written, key=lambda c: (c["date"], c["authored"]))["sha"]
     return min(later, key=lambda c: c["date"])["sha"] if later else None
 
 
@@ -295,7 +305,7 @@ query($owner: String!, $name: String!, $number: Int!) {
       }
       commits(last: 100) {
         totalCount
-        nodes { commit { oid committedDate messageHeadline } }
+        nodes { commit { oid committedDate authoredDate messageHeadline } }
       }
       timelineItems(itemTypes: [REVIEW_DISMISSED_EVENT], first: 100) {
         filteredCount pageInfo { hasNextPage }
@@ -549,6 +559,7 @@ def parse_github_pr(raw: dict[str, Any], self_logins: set[str]) -> dict[str, Any
         {
             "sha": n["commit"]["oid"],
             "date": parse_time(n["commit"]["committedDate"]),
+            "authored": parse_time(n["commit"].get("authoredDate")),
             "subject": n["commit"]["messageHeadline"],
         }
         for n in _nodes(pr, "commits")
@@ -697,6 +708,7 @@ def parse_gitlab(raw: dict[str, Any], self_logins: set[str]) -> dict[str, Any]:
         {
             "sha": c["id"],
             "date": parse_time(c.get("committed_date") or c.get("created_at")),
+            "authored": parse_time(c.get("authored_date")),
             "subject": c.get("title"),
         }
         for c in _flatten(raw.get("commits") or [])
