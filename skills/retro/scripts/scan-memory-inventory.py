@@ -291,7 +291,9 @@ def _global_rules_findings(rules_file: Path) -> list[dict[str, Any]]:
                 and not line[marker.end() :].strip()
             ):
                 fence = ""
-        elif marker:
+        elif marker and not (marker.group(1)[0] == "`" and "`" in line[marker.end() :]):
+            # A backtick fence's info string cannot hold a backtick
+            # (CommonMark); ```python`x is text, not a fence.
             fence = marker.group(1)
         elif line.startswith("## "):
             if section_start is not None:

@@ -612,6 +612,24 @@ class GlobalRulesSourceTest(unittest.TestCase):
         self.assertEqual([f["title"] for f in c2], ["Setup", "Other"])
         self.assertIn("fence stays inside Setup", c2[0]["why"])
 
+    def test_backticks_in_the_info_string_open_no_fence(self):
+        """```python`x is text (CommonMark): the heading after it still counts."""
+        self.rules.write_text(
+            "# Rules\n\n## Setup\n\n```python`x\nbody\n\n## Other\n\nbody\n",
+            encoding="utf-8",
+        )
+        res = _run_scan(
+            memory_root=self.root,
+            include_global_rules=True,
+            global_rules_file=self.rules,
+        )
+        titles = [
+            f["title"]
+            for f in res["json"]["findings"]
+            if f["current_location"] == "global-claude-md"
+        ]
+        self.assertEqual(titles, ["Setup", "Other"])
+
     def test_missing_rules_file_is_not_an_error(self):
         res = _run_scan(
             memory_root=self.root,
