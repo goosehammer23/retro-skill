@@ -198,7 +198,7 @@ pointed at. The text output trims bodies; read a finding in full from
 | `author_class` | `human`, `bot`, `self`. `self` for native reads is the account running the script plus `--self-login`; imported identity classification belongs to its integration; in Outcome mode run by another account, pass the session's login. The agent's own comments and replies are counted, not listed; in a thread it opened, the answers by others are listed as `review-reply` |
 | `report` | a bot's comment on the whole PR/MR (quality gate, coverage, summary), or a bot review that says it did not review (quota, rate limit); rendered apart from the findings. Any other bot review is a finding: its body can carry findings outside the diff. Bot approvals, also those GitHub dismissed on a later push, are not listed |
 | `resolved` | the forge's thread state, where it has one |
-| `commit_after` | the first PR/MR commit dated after the finding. A necessary sign that the finding changed the code, not proof: any later commit qualifies, and a rebase re-dates them all. Read it with `resolved` and `last_self_reply` |
+| `commit_after` | the first PR/MR commit dated after the finding. A necessary sign that the finding changed the code, not proof: any later commit qualifies. A rebase re-dates every commit it replays, so a commit whose author date is also after the finding is preferred. Read it with `resolved` and `last_self_reply` |
 | `last_self_reply` | the agent's last answer in the thread — the reason, when it rejected the finding. A later `review-reply` by a human can overturn it |
 | `last_activity` | the latest entry in the thread; `--since` keeps a thread whose latest entry is at or after it |
 
