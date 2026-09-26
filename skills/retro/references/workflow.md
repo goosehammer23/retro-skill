@@ -247,10 +247,10 @@ Differences between modes:
 | 1b (review/ticket feedback) | Session's PRs/MRs/issues/tickets | Only if the argument is about a review | **Primary** with Phase 3b, `--since` the session end | Skipped | Same as Sweep |
 | 2 (LLM enrich B) | Full transcript | Argument-focused | Past session highlights | Cross-session prose | Full transcript |
 | 2b (trigger-coverage B15) | Yes | Only the argument's skill area | Skipped | **Exhaustive** (whole inventory) | Yes |
-| 4b (project harness) | Yes | Only the argument's surface | Skipped | **Primary** (with E) | Yes |
 | 3 (cross-session C) | Yes | Yes (filtered) | Yes | Yes (wider window) | Yes |
 | 3b (outcome D) | No | No | **Primary** | Some | No |
 | 3c (constitutional E) | No | No | No | **Primary** | No |
+| 4b (project harness) | Yes | Only the argument's surface | Skipped | **Primary** (with E) | Yes |
 | 4-9 | Same | Same (fewer findings) | D-focused | E-focused | Same |
 | 10 (report) | Detailed | Targeted | Outcome-table | Architectural-table | Reminder only |
 
@@ -260,6 +260,12 @@ filesystem inventory of every slug's `memory/`, not a transcript), skips Phases
 post-step to Phase 9 — drain via `scan-memory-inventory.py drain <path>` only
 after the upward write is confirmed (tombstone move, never `rm`). The Phase-10
 report gains a "Source drained?" column.
+
+**Done** skips Phases 1–3 (announce it) unless its retro gate finds no Sweep
+for this session; then the Sweep runs in full first. Phase 8 approves each write
+Done proposes (a booking, a ticket comment, removing anything unpushed), and the
+Phase-10 report is the scope line plus the seven-gate table. See
+`references/done-mode.md`.
 
 ## Efficiency targets
 
