@@ -17,9 +17,9 @@ half of the audit and is deliberately out of scope here; this script only
 tells the auditor which sources are dead, redirected away, or overdue for a
 re-read.
 
-A redirect is followed. When it ends on a different host or path (a login
-wall, a moved page), ``upstream_source_redirected`` names the final URL; a
-change of scheme alone or of a trailing slash is not reported.
+A redirect is followed. When it ends on a different host, path or query (a
+login wall, a moved page), ``upstream_source_redirected`` names the final URL;
+a change of scheme alone or of a trailing slash is not reported.
 
 Probe discipline: a failed request is a transport fact before it is a
 finding. Only 404/410 count as ``upstream_source_dead``; timeouts, TLS
@@ -148,7 +148,8 @@ def collect_checkpoints(root: Path) -> tuple[list[dict], list[dict]]:
 
 
 def _moved(requested: str, final: str) -> bool:
-    """True when a redirect changed the host or the path, not only the scheme."""
+    """True when a redirect changed the host, path or query, not only the
+    scheme or a trailing slash."""
     a, b = urllib.parse.urlsplit(requested), urllib.parse.urlsplit(final)
     return (a.hostname, a.path.rstrip("/"), a.query) != (
         b.hostname,
