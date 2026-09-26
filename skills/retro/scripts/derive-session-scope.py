@@ -609,16 +609,49 @@ def _shell_program(shell: _Shell, group: list[Any]):
     return None
 
 
+# `$W`, `${W}` and the `$W` of `$W/sub`: the variable forms a path word takes.
+VARIABLE_RE = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))")
+
+
+def _expanded(word: str, variables: dict[str, str | None]) -> str:
+    """`word` with every variable this command assigned a known path replaced
+    by that path; anything else keeps its `$` and stays unresolved."""
+
+    def value(match: re.Match[str]) -> str:
+        known = variables.get(match.group(1) or match.group(2))
+        return known if known is not None else match.group(0)
+
+    return VARIABLE_RE.sub(value, word)
+
+
+def _assignment(
+    shell: _Shell, node, base: str | None, variables: dict[str, str | None]
+) -> None:
+    """Record `W=/path` (or `export W=/path`) for the words that follow it.
+
+    A prefix assignment (`W=/x git -C $W`) is skipped: the shell expands `$W`
+    before that assignment takes effect. A value built from another variable
+    or a command makes the name unknown, so an older value is not reused."""
+    name, value = node.child_by_field_name("name"), node.child_by_field_name("value")
+    if name is None or (node.parent is not None and node.parent.type == "command"):
+        return
+    raw = _word(shell, value) if value is not None else ""
+    path = _within(base, _expanded(raw, variables)) if raw else ""
+    variables[_word(shell, name)] = path if path.startswith("/") else None
+
+
 def _group_scope(
     shell: _Shell,
     group: list[Any],
     base: str | None,
     depth: int,
     programs: set[tuple[int, int]],
+    variables: dict[str, str | None],
 ) -> tuple[list[str], set[str], str | None]:
     """(paths, tags, base after it) of one simple command. A `bash -c`
     program read here is recorded in `programs`, so the text walk skips it."""
-    unwrapped = _unwrapped(group, [_word(shell, w) for w in group])
+    words = [_expanded(_word(shell, w), variables) for w in group]
+    unwrapped = _unwrapped(group, words)
     if unwrapped is None:
         return [], set(), base
     group, words, head = unwrapped
@@ -644,13 +677,18 @@ def _shell_scope(
     paths: list[str] = []
     tags: set[str] = set()
     programs: set[tuple[int, int]] = set()  # `bash -c` strings, read as programs
+    variables: dict[str, str | None] = {}  # `W=/path` assigned earlier in the command
     for node in shell._walk():
         if node.type in TEXT_SCOPE_NODES:
             if (node.start_byte, node.end_byte) not in programs:
                 paths += _text_scope(shell, node, depth)
+        elif node.type == "variable_assignment":
+            _assignment(shell, node, base, variables)
         elif node.type == "command":
             for group in _simple_commands(shell, node):
-                found, named, base = _group_scope(shell, group, base, depth, programs)
+                found, named, base = _group_scope(
+                    shell, group, base, depth, programs, variables
+                )
                 paths += found
                 tags |= named
     return paths, tags
