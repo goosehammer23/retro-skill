@@ -151,6 +151,15 @@ class AlternativesTest(unittest.TestCase):
             ms.mask("https://user:p@" + "ss9x@host/"), "https://[REDACTED]@host/"
         )
 
+    def test_every_curl_user_option_is_masked(self):
+        """`curl_user` consumes the `curl` prefix, so a second `-u` needs its own
+        pass; a user without a password stays as it is."""
+        first, second = "pass1" + "x" * 8, "pass2" + "y" * 8
+        self.assertEqual(
+            ms.mask(f"curl -u alice:{first} --user=bob:{second} -u carol https://x"),
+            "curl -u alice:[REDACTED] --user=bob:[REDACTED] -u carol https://x",
+        )
+
     def test_pem_body_without_footer_is_masked(self):
         cut = f"-----BEGIN {PEM_TYPE}-----\n{PEM_BODY}"
         self.assertNotIn("Zm9v", ms.squeeze(cut, 1000))

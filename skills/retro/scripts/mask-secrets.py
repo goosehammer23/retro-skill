@@ -69,6 +69,18 @@ ALTERNATIVES: dict[str, str] = {
 
 SECRET = re.compile("|".join(f"(?P<{n}>{rx})" for n, rx in ALTERNATIVES.items()))
 
+# `curl_user` consumes `curl … -u`, so a second `-u user:pass` in the same
+# command cannot start a match of its own. This pass masks every user option
+# inside each curl command, up to the next shell separator.
+CURL_COMMAND = re.compile(r"\bcurl\b[^\n|;&]*")
+CURL_USER_OPTION = re.compile(
+    r"(?P<keep>\s(?:-u|--user(?![\w-]))[\s=]*[\"']?[^\s:'\"]*:)(?!\$)[^\s'\"]+"
+)
+
+
+def _mask_curl_users(command: re.Match[str]) -> str:
+    return CURL_USER_OPTION.sub(lambda m: m["keep"] + MARKER, command.group(0))
+
 
 def _replace(m: re.Match[str]) -> str:
     keep = m.groupdict().get(f"{m.lastgroup}_keep")
@@ -77,7 +89,7 @@ def _replace(m: re.Match[str]) -> str:
 
 def mask(text: str) -> str:
     """`text` with every credential the patterns know replaced by MARKER."""
-    return SECRET.sub(_replace, text or "")
+    return CURL_COMMAND.sub(_mask_curl_users, SECRET.sub(_replace, text or ""))
 
 
 def squeeze(text: str, limit: int) -> str:
