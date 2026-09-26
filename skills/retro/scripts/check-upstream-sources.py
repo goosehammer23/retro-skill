@@ -54,7 +54,8 @@ from pathlib import Path
 # One level of balanced parentheses inside the URL, as in Wikipedia's
 # `Foo_(bar)`; `[^)\s]+` stopped at the first `)` and probed a truncated URL.
 MD_LINK = re.compile(r"\[[^\]]*\]\((https?://(?:[^()\s]|\([^()\s]*\))+)\)")
-BARE_URL = re.compile(r"(?<!\()(https?://[^\s)\"'`>]+)")
+# Same one level of balanced parentheses for a bare URL in a checkpoint source.
+BARE_URL = re.compile(r"(?<!\()(https?://(?:[^\s()\"'`>]|\([^\s()\"'`>]*\))+)")
 UPSTREAM_MARK = re.compile(r"\[upstream\]", re.IGNORECASE)
 VERIFIED_RE = re.compile(r"^\s*verified:\s*[\"']?(\d{4}-\d{2}-\d{2})")
 SOURCE_RE = re.compile(r"^\s*source:\s*(.*)$")

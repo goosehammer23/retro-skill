@@ -80,6 +80,17 @@ class TestCollectCheckpoints(FixtureMixin):
         self.assertEqual(verified[0]["checkpoint"], "XX-01")
         self.assertEqual(verified[0]["date"], "2020-01-01")
 
+    def test_checkpoint_source_with_parentheses_is_kept_whole(self):
+        (self.dir / "checkpoints.yaml").write_text(
+            "mechanical:\n"
+            "  - id: XX-03\n"
+            "    source: https://en.wikipedia.org/wiki/Foo_(bar)\n"
+        )
+        urls, _verified = cus.collect_checkpoints(self.dir)
+        self.assertEqual(
+            [u["url"] for u in urls], ["https://en.wikipedia.org/wiki/Foo_(bar)"]
+        )
+
     def test_non_url_source_yields_no_url_occurrence(self):
         (self.dir / "checkpoints.yaml").write_text(
             "mechanical:\n"
