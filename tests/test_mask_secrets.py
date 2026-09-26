@@ -11,6 +11,7 @@ import json
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -180,6 +181,21 @@ class AlternativesTest(unittest.TestCase):
             ms.mask(f"curl -u alice:{first} --user=bob:{second} -u carol https://x"),
             "curl -u alice:[REDACTED] --user=bob:[REDACTED] -u carol https://x",
         )
+
+    def test_attached_curl_user_is_masked(self):
+        password = "att4ched" * 2
+        self.assertEqual(
+            ms.mask(f"curl -ualice:{password} https://x"),
+            "curl -ualice:[REDACTED] https://x",
+        )
+
+    def test_long_equals_run_after_a_curl_user_option_stays_linear(self):
+        """Sonar S8786: `[\\s=]*` and the user part both matched `=`, so a run
+        of `=` without a `:` backtracked quadratically."""
+        text = "curl -u" + "=" * 60000
+        start = time.perf_counter()
+        ms.mask(text)
+        self.assertLess(time.perf_counter() - start, 1.0)
 
     def test_pem_body_without_footer_is_masked(self):
         cut = f"-----BEGIN {PEM_TYPE}-----\n{PEM_BODY}"

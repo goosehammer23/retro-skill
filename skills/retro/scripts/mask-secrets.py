@@ -72,8 +72,13 @@ SECRET = re.compile("|".join(f"(?P<{n}>{rx})" for n, rx in ALTERNATIVES.items())
 # credentialed URL) would then ship in clear, as would a second `-u`. So it is
 # a pass of its own over each curl command, after the alternatives have run.
 CURL_COMMAND = re.compile(r"\bcurl\b[^\n|;&]*")
+# One optional `=` or whitespace run after the option, not `[\s=]*`: that and
+# the user part `[^\s:'"]*` both match `=`, so a long run of `=` without a
+# `:` backtracked quadratically (Sonar S8786). The separator stays optional,
+# since curl also takes `-ualice:pw`.
 CURL_USER_OPTION = re.compile(
-    r"(?P<keep>\s(?:-u|--user(?![\w-]))[\s=]*[\"']?[^\s:'\"]*:)(?!\$)[^\s'\"]+"
+    r"(?P<keep>(?<!\S)(?:-u|--user(?![\w-]))(?:=|\s+)?[\"']?[^\s:'\"]*:)"
+    r"(?!\$)[^\s'\"]+"
 )
 
 
