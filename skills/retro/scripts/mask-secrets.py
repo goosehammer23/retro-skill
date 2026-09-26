@@ -40,15 +40,50 @@ ALTERNATIVES: dict[str, str] = {
     # the base64 run that follows when the text was cut before the footer.
     "pem_private_key": r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----"
     r"(?:[\s\S]*?-----END (?:[A-Z0-9]+ )*PRIVATE KEY-----|[A-Za-z0-9+/=\s]*)",
-    "authorization_header": r"(?P<authorization_header_keep>(?i:\bauthorization:\s*"
-    r"(?:basic|bearer|token)\s+))[^\s'\"]+",
+    # `Authorization: Bearer …` as a header, and as a JSON or YAML key
+    # (`{"authorization":"Bearer …"}`).
+    "authorization_header": r"(?P<authorization_header_keep>(?i:\bauthorization"
+    r"[\"']?\s*:\s*[\"']?(?:basic|bearer|token)\s+))[^\s'\"]+",
+    # GitLab's header takes any token, not only a `glpat-` one. A token has
+    # twenty characters or more and a digit, which keeps a variable (`$T`) or
+    # a program's identifier (`{"PRIVATE-TOKEN": token}`) readable.
+    "private_token_header": r"(?P<private_token_header_keep>(?i:\bprivate-token"
+    r"[\"']?\s*:\s*[\"']?))(?=[A-Za-z0-9_.-]*\d)[A-Za-z0-9_.-]{20,}",
     "jwt": r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*",
     # `https://user:token@host` — the userinfo is masked, scheme and host stay.
+    # The user may be empty (`redis://:password@host`), and the password may
+    # hold an `@`: the userinfo runs to the last `@` before the path.
     "url_credentials": r"(?P<url_credentials_keep>\b[A-Za-z][A-Za-z0-9+.-]*://)"
-    r"[^\s/@:]+:[^\s/@]+(?=@)",
+    r"[^\s/@:'\"]*:[^\s/'\"]+(?=@)",
+    "vault_token": r"\bhv[sbr]\.[A-Za-z0-9_-]{20,}",
+    "npm_token": r"\bnpm_[A-Za-z0-9]{36}\b",
+    "google_api_key": r"\bAIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])",
+    # The secret half of an AWS key pair, named by its variable or config key.
+    "aws_secret_key": r"(?P<aws_secret_key_keep>(?i:\baws_secret_access_key"
+    r"[\"']?\s*[=:]\s*[\"']?))[A-Za-z0-9/+=]{40}(?![A-Za-z0-9/+=])",
 }
 
 SECRET = re.compile("|".join(f"(?P<{n}>{rx})" for n, rx in ALTERNATIVES.items()))
+
+# `curl -u user:password`: the password is masked, the user stays; only inside
+# a curl command, so `docker run -u 1000:1000` keeps its ids. This cannot be an
+# alternative above: it would have to consume `curl … -u` as readable context,
+# and every other secret in that span (`-H "Authorization: Bearer …"`, a
+# credentialed URL) would then ship in clear, as would a second `-u`. So it is
+# a pass of its own over each curl command, after the alternatives have run.
+CURL_COMMAND = re.compile(r"\bcurl\b[^\n|;&]*")
+# One optional `=` or whitespace run after the option, not `[\s=]*`: that and
+# the user part `[^\s:'"]*` both match `=`, so a long run of `=` without a
+# `:` backtracked quadratically (Sonar S8786). The separator stays optional,
+# since curl also takes `-ualice:pw`.
+CURL_USER_OPTION = re.compile(
+    r"(?P<keep>(?<!\S)(?:-u|--user(?![\w-]))(?:=|\s+)?[\"']?[^\s:'\"]*:)"
+    r"(?!\$)[^\s'\"]+"
+)
+
+
+def _mask_curl_users(command: re.Match[str]) -> str:
+    return CURL_USER_OPTION.sub(lambda m: m["keep"] + MARKER, command.group(0))
 
 
 def _replace(m: re.Match[str]) -> str:
@@ -58,7 +93,7 @@ def _replace(m: re.Match[str]) -> str:
 
 def mask(text: str) -> str:
     """`text` with every credential the patterns know replaced by MARKER."""
-    return SECRET.sub(_replace, text or "")
+    return CURL_COMMAND.sub(_mask_curl_users, SECRET.sub(_replace, text or ""))
 
 
 def squeeze(text: str, limit: int) -> str:
