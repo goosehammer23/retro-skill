@@ -610,7 +610,8 @@ def _shell_program(shell: _Shell, group: list[Any]):
 
 
 # `$W`, `${W}` and the `$W` of `$W/sub`: the variable forms a path word takes.
-VARIABLE_RE = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))")
+# re.ASCII keeps `\w` to the ASCII letters, digits and `_` a bash name allows.
+VARIABLE_RE = re.compile(r"\$(?:\{([A-Za-z_]\w*)\}|([A-Za-z_]\w*))", re.ASCII)
 
 
 def _expanded(word: str, variables: dict[str, str | None]) -> str:
