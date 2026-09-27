@@ -927,8 +927,12 @@ def load_pr_list(paths: list[Path], gitlab_hosts: tuple[str, ...]) -> list[dict]
     Raises ValueError on an unreadable file, a bad line or a disallowed host."""
     items: list[dict[str, Any]] = []
     for path in paths:
+        # `.resolve()` before opening, as derive-session-scope.py does: the path
+        # is a CLI argument an agent composed, and canonicalising it collapses
+        # any `..` segment rather than following it. The file stays unbounded —
+        # a driver writes its list wherever its workdir is.
         try:
-            lines = path.read_text(encoding="utf-8").splitlines()
+            lines = path.resolve().read_text(encoding="utf-8").splitlines()
         except (OSError, UnicodeDecodeError) as exc:
             raise ValueError(f"{path}: {exc}") from exc
         for number, line in enumerate(lines, 1):
