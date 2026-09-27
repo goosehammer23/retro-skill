@@ -226,7 +226,9 @@ re-presented.
 ```
 1. Mechanical pre-pass (Schicht A)
 1b. Native reviews plus supplied tracker feedback (collect-review-findings.py);
-    delegate contextual reference resolution per feedback-contract.md
+    delegate contextual reference resolution per feedback-contract.md.
+    PRs/MRs a script opened (a fleet driver's opened.jsonl) are not in the
+    transcript: add them with --pr-list <file> (origin "listed")
 2. LLM enrichment (Schicht B)
 3. Cross-session enrichment (Schicht C, optional)
 4. Skill discovery (full catalogue, input to classification)
@@ -367,7 +369,9 @@ and tracker evidence supplied by the owning integration, which Phase 1b reads
 **not** detect: silent badness (architecturally wrong but friction-free choices
 the agent never recognized as a learning); external signals outside forge and
 tracker (customer complaints, prod alerts, Slack / Matrix / Sentry); feedback on
-an external ticket for which no owning integration supplied evidence; an opaque
+an external ticket for which no owning integration supplied evidence; a PR or
+MR a script opened inside one call, unless its list is passed with `--pr-list`
+(a fleet release driver's `opened.jsonl` is such a list); an opaque
 reference whose tracker, instance and artifact identity remain unresolved; a write whose output named no target (listed as an
 unresolved forge command instead); a write through `curl` or another tool
 than `gh`, `glab`, the GitHub MCP tools and `pr-merge.sh`; slow constitutional drift
