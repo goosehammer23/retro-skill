@@ -314,6 +314,93 @@ class CommandShapeTest(unittest.TestCase):
         self.assertEqual(scope["repositories"], [str(self.repo.resolve())])
 
 
+class PathVariableTest(unittest.TestCase):
+    """A path assigned to a variable in the same command, then used by
+    `git -C $W` or `cd $W`: 60 of 264 Bash commands in the session that found
+    this took that shape, and each was listed only as an unresolved `$W`."""
+
+    def setUp(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root, True)
+        self.root = root
+        self.repo = root / "repoA"
+        _git("init", "-q", str(self.repo))
+        (self.repo / "sub").mkdir()
+
+    def _scope(self, commands: list[str]) -> dict:
+        return dss.collect(_write(self.root / "s.jsonl", _bash_events(commands)))
+
+    def test_the_sessions_own_shape_is_resolved(self) -> None:
+        scope = self._scope(
+            [f"W={self.repo}; git -C $W add a.txt && git -C $W commit -m x"]
+        )
+        self.assertEqual(scope["repositories"], [str(self.repo.resolve())])
+        self.assertEqual(scope["unresolved_paths"], [])
+
+    def test_export_quotes_braces_and_a_relative_value(self) -> None:
+        for command in (
+            f'export B={self.repo}\ngit -C "$B" fetch',
+            f"W={self.repo}; cd ${{W}}/sub && make",
+            f"cd {self.root} && W=repoA; git -C $W status",
+        ):
+            with self.subTest(command=command):
+                scope = self._scope([command])
+                self.assertEqual(scope["repositories"], [str(self.repo.resolve())])
+
+    def test_values_the_command_does_not_fix_stay_unresolved(self) -> None:
+        for command, raw in (
+            # a prefix assignment applies to its own command only
+            (f"W={self.repo} git log; git -C $W status", "$W"),
+            ("D=$HOME/p; cd $D", "$D"),
+            # a later unknown value hides the earlier path
+            (f"W={self.repo}; W=$(pwd); git -C $W status", "$W"),
+            (f"for w in {self.repo}; do git -C $w status; done", "$w"),
+        ):
+            with self.subTest(command=command):
+                scope = self._scope([command])
+                self.assertEqual(scope["repositories"], [])
+                self.assertIn(raw, scope["unresolved_paths"])
+
+
+class PathVariableSemanticsTest(unittest.TestCase):
+    """Bash semantics of those variables, from the CodeRabbit review of #160:
+    relative values, single quotes, subshells and `unset`."""
+
+    def setUp(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root, True)
+        self.root = root
+        self.repo = root / "repoA"
+        _git("init", "-q", str(self.repo))
+        (root / "elsewhere").mkdir()
+
+    def _repos(self, command: str) -> list[str]:
+        return dss.collect(_write(self.root / "s.jsonl", _bash_events([command])))[
+            "repositories"
+        ]
+
+    def test_a_relative_value_is_resolved_where_it_is_used(self) -> None:
+        command = (
+            f'cd {self.root}/elsewhere; W=repoA; cd {self.root}; git -C "$W" status'
+        )
+        self.assertEqual(self._repos(command), [str(self.repo.resolve())])
+
+    def test_a_variable_inside_a_subshell_counts_there(self) -> None:
+        command = f'(W={self.repo}; git -C "$W" status)'
+        self.assertEqual(self._repos(command), [str(self.repo.resolve())])
+
+    def test_what_bash_does_not_expand_names_no_repository(self) -> None:
+        for command in (
+            f"W={self.repo}; git -C '$W' status",  # single-quoted word
+            f"W={self.repo}; P='$W'; git -C \"$P\" status",  # single-quoted value
+            f'W=/nonexistent/x; (W={self.repo}); git -C "$W" status',  # subshell
+            f'W=/nonexistent/x; echo $(W={self.repo}); git -C "$W" status',
+            f'W={self.repo}; unset W; git -C "$W" status',
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(self._repos(command), [])
+
+
 class MalformedTranscriptTest(unittest.TestCase):
     """A-F12: a line that is JSON but not an event must not end the scan."""
 
