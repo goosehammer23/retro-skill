@@ -164,7 +164,8 @@ host this run does not know (`-R https://x.org/g/p`), or naming `gitlab.com`,
 `bitbucket.org` or `codeberg.org`, leaves the write unresolved; any other
 dotted first segment is a GitLab group. Writes through other tools — `curl`
 against a forge API, a script run in a later call, a script file the call did
-not write itself — are not seen at all; name them by hand. A call that holds
+not write itself — are not seen at all; pass their PRs/MRs with `--pr-list`
+(a fleet driver's `opened.jsonl` works unchanged). A call that holds
 a write in text (a heredoc, a quoted string, or a list-form call such as
 `["gh", "pr", …]`) and also runs a program it carries is unresolved, whether
 or not that program writes: a shell given its program (`bash <<…`,

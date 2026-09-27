@@ -2312,6 +2312,114 @@ class ArtifactTabTest(unittest.TestCase):
         self.assertEqual(crf.native_urls_supplied(external), [tab])
 
 
+class PrListTest(unittest.TestCase):
+    """--pr-list: PRs a script opened, which the transcript never shows."""
+
+    PR = "https://github.com/netresearch/retro-skill/pull/122"
+    HOSTS = ("--gitlab-host", "git.example.org")
+
+    def _file(self, *lines: str) -> Path:
+        path = Path(TMP.name) / f"opened{next(_COUNTER)}.jsonl"
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return path
+
+    def _main(self, *argv: str):
+        """(exit code, JSON result or None, stderr, commands run)."""
+        calls = []
+
+        def fake(command, **_):
+            calls.append(command)
+            if command[:3] == ["gh", "api", "graphql"] and "number=122" in command:
+                raw = json.dumps(_fixture("github-pr-retro-skill-122.json"))
+                return subprocess.CompletedProcess(command, 0, raw, "")
+            return subprocess.CompletedProcess(command, 1, "", "HTTP 404: Not Found")
+
+        out, err = io.StringIO(), io.StringIO()
+        with (
+            mock.patch.object(crf.subprocess, "run", side_effect=fake),
+            contextlib.redirect_stdout(out),
+            contextlib.redirect_stderr(err),
+        ):
+            code = crf.main(["x", *argv, *self.HOSTS, "--output-format", "json"])
+        result = json.loads(out.getvalue()) if out.getvalue() else None
+        return code, result, err.getvalue(), calls
+
+    def test_both_line_forms_are_accepted(self):
+        opened = (
+            '{"repo": "matrix-skill", "id": 163, "host": "github.com",'
+            ' "url": "https://github.com/netresearch/matrix-skill/pull/163"}'
+        )
+        path = self._file(
+            self.PR,
+            "",
+            opened,
+            "https://git.example.org/g/p/-/merge_requests/3",
+        )
+        items = crf.load_pr_list([path], ("git.example.org",))
+        self.assertEqual(
+            [(i["forge"], i["url"], i["origin"]) for i in items],
+            [
+                ("github", self.PR, "listed"),
+                (
+                    "github",
+                    "https://github.com/netresearch/matrix-skill/pull/163",
+                    "listed",
+                ),
+                (
+                    "gitlab",
+                    "https://git.example.org/g/p/-/merge_requests/3",
+                    "listed",
+                ),
+            ],
+        )
+
+    def test_a_listed_pr_is_read_and_marked_listed(self):
+        _, result, _, calls = self._main("--pr-list", str(self._file(self.PR)))
+        pr = next(a for a in result["artefacts"] if a["url"] == self.PR)
+        self.assertEqual((pr["origin"], pr["fetched"]), ("listed", True))
+        self.assertGreater(pr["findings"], 0)
+        self.assertEqual(sum("number=122" in c for c in calls), 1)
+
+    def test_a_pr_the_transcript_names_is_read_once_under_its_own_origin(self):
+        transcript = _transcript(
+            [({"command": "gh pr create -R netresearch/retro-skill --fill"}, self.PR)]
+        )
+        _, result, _, calls = self._main(
+            "--transcript-file",
+            str(transcript),
+            "--since",
+            "2026-01-01T00:00:00Z",
+            "--pr-list",
+            str(self._file(self.PR + "?notification_referrer_id=1", self.PR)),
+        )
+        own = [a for a in result["artefacts"] if a["url"] == self.PR]
+        self.assertEqual([a["origin"] for a in own], ["created"])
+        self.assertEqual(sum("number=122" in c for c in calls), 1)
+
+    def test_a_line_that_names_no_pr_or_mr_is_refused(self):
+        for line in (
+            "https://github.com/netresearch/retro-skill/issues/5",
+            "https://git.example.org/g/p/-/issues/5",
+            "https://jira.example.org/browse/OPS-901",
+            "NRS-12",
+            '{"repo": "retro-skill", "id": 122}',
+            '{"url": ',
+        ):
+            with self.subTest(line=line), self.assertRaises(ValueError):
+                crf.load_pr_list([self._file(line)], ("git.example.org",))
+
+    def test_a_gitlab_host_outside_the_allowlist_is_refused(self):
+        path = self._file("https://git.elsewhere.org/g/p/-/merge_requests/3")
+        with self.assertRaisesRegex(ValueError, "git.elsewhere.org not allowed"):
+            crf.load_pr_list([path], ("git.example.org",))
+
+    def test_an_invalid_line_stops_the_run_before_any_network_call(self):
+        path = self._file(self.PR, "https://github.com/o/r/issues/5")
+        code, result, err, calls = self._main("--pr-list", str(path))
+        self.assertEqual((code, result, calls), (2, None, []))
+        self.assertIn(f"{path}:2", err)
+
+
 class MainTest(unittest.TestCase):
     def test_an_unparsable_since_is_an_error(self):
         with (

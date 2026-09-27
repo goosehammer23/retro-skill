@@ -45,6 +45,11 @@ Usage:
     collect-review-findings.py --transcript-file <session.jsonl> [--since ISO]
         [--include-mentioned] [--output-format text|json]
     collect-review-findings.py --ref <artifact URL or unresolved short reference> [--ref …]
+    collect-review-findings.py --transcript-file <session.jsonl> --pr-list <opened.jsonl>
+
+A PR/MR a script opened inside one call never shows in the transcript. Its
+list — one URL, or one JSON object with `url`, per line — goes in with
+`--pr-list`; those PRs are read like the session's own, with origin `listed`.
 
 Failure stays distinguishable from silence: an artefact that could not be read
 is listed with `fetched: false` and the error, never as an artefact with no
@@ -893,6 +898,51 @@ def load_feedback(paths: list[Path]) -> dict[str, dict]:
     return external
 
 
+def _listed_item(line: str, gitlab_hosts: tuple[str, ...], where: str) -> dict:
+    """One line of a --pr-list file: a bare URL, or a JSON object with `url`."""
+    url: Any = line
+    if line.startswith("{"):
+        try:
+            url = json.loads(line).get("url")
+        except ValueError as exc:
+            raise ValueError(f"{where}: not a JSON object: {exc}") from exc
+    item = parse_ref(url) if isinstance(url, str) else None
+    if item is None or item["kind"] not in {"pull", "merge_request"}:
+        raise ValueError(
+            f"{where}: not a GitHub pull request or GitLab merge request URL:"
+            f" {oneline(str(url))}"
+        )
+    if item["forge"] == "gitlab" and item["host"] not in gitlab_hosts:
+        raise ValueError(
+            f"{where}: host {item['host']} not allowed — pass --gitlab-host {item['host']}"
+        )
+    # The canonical URL, so a listed PR and the same PR from the transcript
+    # are one artefact.
+    return dict(scope.artefacts_in_text(item["url"])[0], origin="listed")
+
+
+def load_pr_list(paths: list[Path], gitlab_hosts: tuple[str, ...]) -> list[dict]:
+    """PRs and MRs a script opened, from the list it wrote (a fleet driver's
+    `opened.jsonl`). Every line is validated before anything is read.
+    Raises ValueError on an unreadable file, a bad line or a disallowed host."""
+    items: list[dict[str, Any]] = []
+    for path in paths:
+        # `.resolve()` before opening, as derive-session-scope.py does: the path
+        # is a CLI argument an agent composed, and canonicalising it collapses
+        # any `..` segment rather than following it. The file stays unbounded —
+        # a driver writes its list wherever its workdir is.
+        try:
+            lines = path.resolve().read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError) as exc:
+            raise ValueError(f"{path}: {exc}") from exc
+        for number, line in enumerate(lines, 1):
+            if line.strip():
+                items.append(
+                    _listed_item(line.strip(), gitlab_hosts, f"{path}:{number}")
+                )
+    return items
+
+
 def links_of(parsed: dict[str, Any]) -> list[dict[str, Any]]:
     """Follow native links; preserve short references with their source context."""
     found = [
@@ -1207,12 +1257,14 @@ def gitlab_hosts_from(named: list[str], env: str | None) -> tuple[str, ...]:
     )
 
 
-def _items_from_args(args, gitlab_host: str):
+def _items_from_args(args, gitlab_host: str, listed: list[dict[str, Any]]):
     """The artefacts to read, how many mentioned ones were skipped, the
     transcript's start, and the forge writes whose target it does not name.
+    A listed PR the transcript already names keeps the transcript's origin.
     Raises ValueError on a bad transcript path or ref."""
     items: list[dict[str, Any]] = []
     mentioned_skipped, start, unresolved = 0, None, []
+    listed_urls = {i["url"] for i in listed}
     if args.transcript_file:
         if not args.transcript_file.is_file():
             raise ValueError(f"no such transcript: {args.transcript_file}")
@@ -1220,10 +1272,14 @@ def _items_from_args(args, gitlab_host: str):
         items = items_from_scope(data, args.include_mentioned)
         if not args.include_mentioned:
             mentioned_skipped = sum(
-                1 for a in data["artefacts"] if a["origin"] == "mentioned"
+                1
+                for a in data["artefacts"]
+                if a["origin"] == "mentioned" and a["url"] not in listed_urls
             )
         start = transcript_start(args.transcript_file)
         unresolved = data["unresolved_forge_commands"]
+    # After the transcript's own: collect() reads a URL once, first come.
+    items += listed
     for ref in args.ref:
         item = parse_ref(ref)
         if item is None:
@@ -1258,6 +1314,14 @@ def main(argv: list[str]) -> int:
         help="local version-1 normalized feedback JSON from the owning integration; repeatable",
     )
     parser.add_argument(
+        "--pr-list",
+        type=Path,
+        action="append",
+        default=[],
+        help="PRs/MRs a script opened, one per line: a URL or a JSON object with"
+        " `url` (a fleet driver's opened.jsonl); repeatable",
+    )
+    parser.add_argument(
         "--gitlab-host",
         action="append",
         default=[],
@@ -1267,16 +1331,17 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--output-format", choices=("text", "json"), default="text")
     args = parser.parse_args(argv[1:])
 
-    if not args.transcript_file and not args.ref and not args.feedback_file:
-        parser.error("give --transcript-file, --ref or --feedback-file")
+    if not (args.transcript_file or args.ref or args.feedback_file or args.pr_list):
+        parser.error("give --transcript-file, --ref, --feedback-file or --pr-list")
     since = parse_time(args.since) if args.since else None
     if args.since and since is None:
         parser.error(f"--since is not an ISO 8601 time: {args.since}")
     gitlab_hosts = gitlab_hosts_from(args.gitlab_host, os.environ.get("GITLAB_HOST"))
     try:
         external = load_feedback(args.feedback_file)
+        listed = load_pr_list(args.pr_list, gitlab_hosts)
         items, mentioned_skipped, start, unresolved = _items_from_args(
-            args, gitlab_hosts[0]
+            args, gitlab_hosts[0], listed
         )
     except ValueError as exc:
         print(exc, file=sys.stderr)
