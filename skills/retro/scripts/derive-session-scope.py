@@ -624,20 +624,41 @@ def _expanded(word: str, variables: dict[str, str | None]) -> str:
     return VARIABLE_RE.sub(value, word)
 
 
-def _assignment(
-    shell: _Shell, node, base: str | None, variables: dict[str, str | None]
-) -> None:
+def _word_value(shell: _Shell, node, variables: dict[str, str | None]) -> str:
+    """A word as bash reads it: known variables expanded, except inside
+    single quotes, where `$W` is the literal text `$W`."""
+    if node.type == "raw_string":
+        return _word(shell, node)
+    if node.type == "concatenation":
+        return "".join(_word_value(shell, part, variables) for part in node.children)
+    return _expanded(_word(shell, node), variables)
+
+
+def _assignment(shell: _Shell, node, variables: dict[str, str | None]) -> None:
     """Record `W=/path` (or `export W=/path`) for the words that follow it.
 
-    A prefix assignment (`W=/x git -C $W`) is skipped: the shell expands `$W`
-    before that assignment takes effect. A value built from another variable
-    or a command makes the name unknown, so an older value is not reused."""
+    The value is kept as written: a relative one is joined to the directory
+    current where `$W` is used, as bash does. A prefix assignment
+    (`W=/x git …`) applies to its own command only and is skipped. A value
+    still holding a variable or a command makes the name unknown, so an older
+    value is not reused."""
     name, value = node.child_by_field_name("name"), node.child_by_field_name("value")
     if name is None or (node.parent is not None and node.parent.type == "command"):
         return
-    raw = _word(shell, value) if value is not None else ""
-    path = _within(base, _expanded(raw, variables)) if raw else ""
-    variables[_word(shell, name)] = path if path.startswith("/") else None
+    raw = _word_value(shell, value, variables) if value is not None else ""
+    known = raw and "$" not in raw and "`" not in raw
+    variables[_word(shell, name)] = raw if known else None
+
+
+def _track_variable(shell: _Shell, node, variables: dict[str, str | None]) -> None:
+    """Apply one assignment or `unset` to the variables in force. tree-sitter-bash
+    gives `unset` a node of its own (`unset_command`), not a `command`."""
+    if node.type == "variable_assignment":
+        _assignment(shell, node, variables)
+        return
+    for name in node.children:
+        if name.type == "variable_name":
+            variables[_word(shell, name)] = None
 
 
 def _group_scope(
@@ -650,7 +671,7 @@ def _group_scope(
 ) -> tuple[list[str], set[str], str | None]:
     """(paths, tags, base after it) of one simple command. A `bash -c`
     program read here is recorded in `programs`, so the text walk skips it."""
-    words = [_expanded(_word(shell, w), variables) for w in group]
+    words = [_word_value(shell, w, variables) for w in group]
     unwrapped = _unwrapped(group, words)
     if unwrapped is None:
         return [], set(), base
@@ -670,6 +691,21 @@ def _group_scope(
     return [], set(), base
 
 
+SUBSHELL_NODES = frozenset(["subshell", "command_substitution", "process_substitution"])
+
+
+def _leave_scopes(
+    node,
+    scopes: list[tuple[int, dict[str, str | None]]],
+    variables: dict[str, str | None],
+) -> dict[str, str | None]:
+    """The variables in force at `node`: each subshell the walk has left since
+    the last node gives back the map from before it."""
+    while scopes and node.start_byte >= scopes[-1][0]:
+        variables = scopes.pop()[1]
+    return variables
+
+
 def _shell_scope(
     shell: _Shell, cwd: str | None, depth: int
 ) -> tuple[list[str], set[str]]:
@@ -678,12 +714,17 @@ def _shell_scope(
     tags: set[str] = set()
     programs: set[tuple[int, int]] = set()  # `bash -c` strings, read as programs
     variables: dict[str, str | None] = {}  # `W=/path` assigned earlier in the command
+    # Variables set inside `( … )` or `$( … )` are gone when it ends.
+    scopes: list[tuple[int, dict[str, str | None]]] = []
     for node in shell._walk():
+        variables = _leave_scopes(node, scopes, variables)
+        if node.type in SUBSHELL_NODES:
+            scopes.append((node.end_byte, dict(variables)))
         if node.type in TEXT_SCOPE_NODES:
             if (node.start_byte, node.end_byte) not in programs:
                 paths += _text_scope(shell, node, depth)
-        elif node.type == "variable_assignment":
-            _assignment(shell, node, base, variables)
+        elif node.type in ("variable_assignment", "unset_command"):
+            _track_variable(shell, node, variables)
         elif node.type == "command":
             for group in _simple_commands(shell, node):
                 found, named, base = _group_scope(
