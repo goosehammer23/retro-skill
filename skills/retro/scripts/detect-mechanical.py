@@ -531,7 +531,7 @@ def _pair_block(
         return None
     if block.get("type") == "tool_use":
         use_id = block.get("id")
-        if not isinstance(use_id, str) or not use_id:
+        if not use_id:
             i_use, name, inp, message_id = _use_fields(i, msg, block)
             return ToolUse((i_use, name, inp, "", False), message_id)
         pending[use_id] = _use_fields(i, msg, block)
