@@ -25,7 +25,9 @@
 #       title), pushes -u, opens the PR for that branch (--head) with
 #       --body-file, prints the PR URL.
 #
-# Exit: 0 ok; 2 usage/error. Never force-pushes, never merges.
+# Exit: 0 ok; 2 unknown command, no file named, body file not found or an
+# eval refused; 1 a missing positional argument; a failing git or gh command
+# ends the script with that command's status. Never force-pushes, never merges.
 set -euo pipefail
 
 die() { printf 'materialize-pr: %s\n' "$1" >&2; exit 2; }

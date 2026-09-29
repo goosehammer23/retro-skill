@@ -180,6 +180,23 @@ class MaterializePrTest(unittest.TestCase):
             git("-C", str(self.remote), "log", "-1", "--format=%s", "feat/x"), "feat: a"
         )
 
+    def test_exit_statuses_match_the_header(self):
+        """The header's Exit line: 2 for refusals, 1 for a missing argument,
+        git's own status for a failing git command - never 0."""
+        cases = [
+            (("bogus",), 2, "usage"),
+            (("finish", str(self.tmp), "t", "body.md"), 2, "never -A"),
+            (("finish", str(self.tmp), "t", "missing.md", "a.txt"), 2, "body file"),
+            (("start",), 1, "repo-dir"),
+            (("start", str(self.tmp / "no-such-repo"), "feat/x"), 128, "fatal"),
+        ]
+        for args, status, message in cases:
+            with self.subTest(args=args):
+                result = self._run(*args)
+                self.assertEqual(result.returncode, status, result.stderr)
+                self.assertIn(message, result.stderr)
+        self.assertFalse(self.gh_log.exists(), "gh must not run on a refusal")
+
 
 if __name__ == "__main__":
     unittest.main()
