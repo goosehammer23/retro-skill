@@ -1315,6 +1315,56 @@ class TestHelpers(unittest.TestCase):
         self.assertEqual([use[2]["path"] for use in result], ["/tmp/a.rb", "/tmp/b.rb"])
         self.assertTrue(all(use[3] == "" and use[4] is False for use in result))
 
+    def test_extract_tool_uses_orders_id_less_calls_and_drops_unfinished_ones(self):
+        # An id-less call sits where it was issued, between paired ones, so
+        # order-sensitive signals (A5, the repetition ones) read it in place.
+        # A call WITH an id that never got a result is unfinished, not a
+        # success: the opencode adapter withholds such results on purpose.
+        def use(use_id, path):
+            block = {"type": "tool_use", "name": "Read", "input": {"path": path}}
+            if use_id:
+                block["id"] = use_id
+            return block
+
+        def result(use_id):
+            return {"type": "tool_result", "tool_use_id": use_id, "content": "ok"}
+
+        events = [
+            {"message": {"content": [use("a", "/a")]}},
+            {"message": {"content": [result("a")]}},
+            {"message": {"content": [use(None, "/cursor")]}},
+            {"message": {"content": [use("running", "/running")]}},
+            {"message": {"content": [use("c", "/c")]}},
+            {"message": {"content": [result("c")]}},
+        ]
+        result_uses = detect.extract_tool_uses(events)
+        self.assertEqual([u[2]["path"] for u in result_uses], ["/a", "/cursor", "/c"])
+
+    def test_extract_tool_uses_keeps_every_id_less_call_of_one_event(self):
+        # Two id-less calls of one event, with a pairing in between: both are
+        # kept, and the paired call is not lost either.
+        events = [
+            {
+                "message": {
+                    "content": [
+                        {"type": "tool_use", "id": "x", "name": "Bash", "input": {}}
+                    ]
+                }
+            },
+            {
+                "message": {
+                    "content": [
+                        {"type": "tool_use", "name": "Read", "input": {"path": "/1"}},
+                        {"type": "tool_result", "tool_use_id": "x", "content": ""},
+                        {"type": "tool_use", "name": "Read", "input": {"path": "/2"}},
+                    ]
+                }
+            },
+        ]
+        uses = detect.extract_tool_uses(events)
+        self.assertEqual(sorted(u[1] for u in uses), ["Bash", "Read", "Read"])
+        self.assertEqual([u[2]["path"] for u in uses if u[1] == "Read"], ["/1", "/2"])
+
 
 if __name__ == "__main__":
     unittest.main()

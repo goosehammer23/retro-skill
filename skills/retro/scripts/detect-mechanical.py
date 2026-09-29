@@ -484,20 +484,10 @@ def message_key(tool_use: tuple) -> tuple:
 _PendingUse = tuple[int, str, dict, "str | None"]
 
 
-def _register_tool_use(
-    i: int, msg: dict, block: dict, pending: dict[str, _PendingUse]
-) -> None:
-    """Remember a tool_use block until its tool_result arrives.
-
-    Cursor agent transcripts omit ``id``. A missing id used to drop the call,
-    so the whole mechanical pass saw zero tool uses. A synthetic id keeps it
-    pending until ``extract_tool_uses`` flushes unpaired calls.
-    """
-    use_id = block.get("id")
-    if not isinstance(use_id, str) or not use_id:
-        use_id = f"unpaired-{i}-{len(pending)}"
+def _use_fields(i: int, msg: dict, block: dict) -> _PendingUse:
+    """(event_index, tool_name, input, message_id) of one tool_use block."""
     inp = block.get("input")
-    pending[use_id] = (
+    return (
         i,
         str(block.get("name") or ""),
         inp if isinstance(inp, dict) else {},
@@ -528,21 +518,33 @@ def _pair_tool_result(block: dict, pending: dict[str, _PendingUse]) -> ToolUse |
 def _pair_block(
     i: int, msg: dict, block, pending: dict[str, _PendingUse]
 ) -> ToolUse | None:
-    """Feed one content block into the pairing; return a ToolUse once complete."""
+    """Feed one content block into the pairing; return a ToolUse once complete.
+
+    A tool_use without an ``id`` comes from a format that never pairs: Cursor
+    agent transcripts omit both the id and every tool_result. Such a call is
+    emitted at once, with an empty result, so tool-name signals still see it.
+    A call WITH an id stays pending, and one whose result never arrives is left
+    out: the opencode adapter withholds the result of a running call precisely
+    so that it is not counted as a successful one.
+    """
     if not isinstance(block, dict):
         return None
     if block.get("type") == "tool_use":
-        _register_tool_use(i, msg, block, pending)
+        use_id = block.get("id")
+        if not isinstance(use_id, str) or not use_id:
+            i_use, name, inp, message_id = _use_fields(i, msg, block)
+            return ToolUse((i_use, name, inp, "", False), message_id)
+        pending[use_id] = _use_fields(i, msg, block)
     elif block.get("type") == "tool_result":
         return _pair_tool_result(block, pending)
     return None
 
 
 def extract_tool_uses(events: Iterable[dict]) -> list[ToolUse]:
-    """Return one ToolUse per call, paired with its result when the transcript has one.
+    """Return (event_index, tool_name, input, result_text, is_error) per call.
 
-    Calls that never receive a tool_result (Cursor transcripts, truncated logs)
-    are still returned, with an empty result, so tool-name signals can run.
+    A call with an id is returned once its tool_result pairs with it; a call
+    without one (Cursor) is returned where it was issued, with an empty result.
     """
     out = []
     tool_uses_pending: dict[str, _PendingUse] = {}
@@ -555,8 +557,6 @@ def extract_tool_uses(events: Iterable[dict]) -> list[ToolUse]:
             paired = _pair_block(i, msg, block, tool_uses_pending)
             if paired is not None:
                 out.append(paired)
-    for i_use, name, inp, message_id in tool_uses_pending.values():
-        out.append(ToolUse((i_use, name, inp, "", False), message_id))
     return out
 
 
