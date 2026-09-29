@@ -26,6 +26,9 @@
 - [Optional auto-trigger](#optional-auto-trigger)
 - [Repository layout](#repository-layout)
 - [Related projects](#related-projects)
+- [Tests](#tests)
+- [Dependencies](#dependencies)
+- [Governance and policies](#governance-and-policies)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -167,6 +170,7 @@ The full signal catalog lives in [`skills/retro/references/friction-catalog.md`]
 - **No silent writes.** Every materialization needs explicit, per-proposal approval.
 - **Patches target the source repo, never the cache.** `~/.claude/plugins/cache/` is overwritten on every plugin update; edits there would be lost. `/retro` clones the source repo (or uses an existing worktree) and opens a PR via `gh` / `glab`.
 - **The LLM classifies; the pre-pass only saves tokens.** The deterministic layer A never decides a destination.
+- **What the scripts read, write and send** — and where masking of transcript text stops — is set out in the [security assurance case](docs/SECURITY-ASSURANCE.md).
 - **Never:** auto-merge; harness-invented attribution in commits or PRs ("Generated with Claude Code", `Co-Authored-By: Claude`) — a disclosure trailer the user's own rules prescribe is required rather than banned; `--no-verify`; patching the cache; hardcoding a static skill list; generating 1000+ candidates.
 
 ## Honest limitations
@@ -272,6 +276,61 @@ retro-skill/
 | [automated-assessment-skill](https://github.com/netresearch/automated-assessment-skill) | Checkpoint YAML schema for `checkpoint` materialization |
 
 Deeper reading: the [`skills/retro/references/`](skills/retro/references/) docs, [`AGENTS.md`](AGENTS.md), and the original spec at [`docs/specs/retro-skill.md`](docs/specs/retro-skill.md), which is superseded and kept as a historical record.
+
+## Tests
+
+The behavioural tests live in `tests/test_*.py` and use the standard library's `unittest`. Run them from the repository root with the commands CI runs (CI adds `--python <version>` to each `uv run`):
+
+```bash
+uv run --with tree-sitter==0.26.0 --with tree-sitter-bash==0.25.1 python -m unittest discover -s tests -v
+uv run python -m py_compile skills/retro/scripts/*.py
+uv run python skills/retro/scripts/validate-evals.py
+```
+
+The tests need `python3` 3.10 or later, `bash`, `git` and `jq` on `PATH`, and no network: `gh` is either a stub script on `PATH` (`tests/test_materialize_pr.py`) or replaced by an injected runner that returns recorded responses (`tests/test_collect_review_findings.py`, `tests/test_tracker_neutrality.py`). Transcripts, opencode databases, memory stores, plugin caches and git repositories are built in temporary directories.
+
+Each script under `skills/retro/scripts/` except `feedback-contract.py` has its own test file, named after it (`detect-mechanical.py` → `tests/test_detect_mechanical.py` and `tests/test_detect_mechanical_review.py`); `feedback-contract.py` is exercised through `tests/test_tracker_neutrality.py`, and the two shell scripts are run for real by `tests/test_find_installed_skills.py` and `tests/test_materialize_pr.py`. `check-upstream-sources.py` is tested on its offline paths only. `skills/retro/evals/*.md` are scenarios for grading a retro transcript; `validate-evals.py` checks their structure, it does not run them.
+
+A failing test is reported by `unittest` as `FAIL` (an assertion did not hold) or `ERROR` (the test raised), each with the test's id and a traceback, and the run exits non-zero.
+
+In CI, the `lint` workflow (`.github/workflows/lint.yml`, calling `netresearch/skill-repo-skill`'s `ci-python.yml`) runs these three commands on every pull request to `main` and every push to `main`, on Python 3.12, 3.13 and 3.14.
+
+Branch coverage of the Python scripts can be measured with coverage.py; the `patch = subprocess` setting also counts the scripts the tests start as subprocesses:
+
+```bash
+printf '[run]\nbranch = True\nparallel = True\npatch = subprocess\ndata_file = /tmp/retro-coverage.data\nsource = skills/retro/scripts\n' > /tmp/retro.coveragerc
+COVERAGE_RCFILE=/tmp/retro.coveragerc uv run --with coverage --with tree-sitter==0.26.0 --with tree-sitter-bash==0.25.1 python -m coverage run -m unittest discover -s tests
+COVERAGE_RCFILE=/tmp/retro.coveragerc uv run --with coverage python -m coverage combine
+COVERAGE_RCFILE=/tmp/retro.coveragerc uv run --with coverage python -m coverage report
+COVERAGE_RCFILE=/tmp/retro.coveragerc uv run --with coverage python -m coverage json -o /tmp/retro-coverage.json
+```
+
+`coverage report` prints a combined statement and branch figure; the branch count alone is `totals.covered_branches` of `totals.num_branches` in the JSON report.
+
+Measured on 2026-09-30 at commit `fbc99ca`: 1584 of 1804 branches (87.8 %) of the twelve Python scripts; the two shell scripts are not measured. CI does not measure coverage.
+
+A pull request that adds or changes behaviour in a script adds or updates a test in `tests/` that fails without the change.
+
+## Dependencies
+
+- **Runtime:** the scripts need `python3` (3.10 or later) and use only the standard library, except `derive-session-scope.py` and `collect-review-findings.py`, which declare `tree-sitter==0.26.0` and `tree-sitter-bash==0.25.1` in an inline script-metadata block (PEP 723). `uv run --script` installs exactly those versions from the configured package index (PyPI by default) into a cached environment on first use. The shell scripts need `bash`, `git` and `jq`; `materialize-pr.sh` also needs `gh`. The tools a `/retro` run uses are listed under [Requirements](#requirements); they are installed by the user and not declared in any manifest.
+- **Packaging:** `composer.json` requires `netresearch/composer-agent-skill-plugin`, which registers the skill in a consuming Composer project. `composer.lock` is ignored (`.gitignore`); the skill-repo convention publishes no lock file. The Claude Code plugin manifests (`plugin.json`, `.claude-plugin/plugin.json`) declare no dependencies.
+- **Development and CI:** the pre-commit hooks are pinned by `rev:` in `.pre-commit-config.yaml`. The test command pins the tree-sitter packages with `--with` in `.github/workflows/lint.yml`, matching the scripts' inline metadata. The workflows call reusable workflows from `netresearch/skill-repo-skill` and `netresearch/.github` at `@main`; the third-party actions inside those are pinned to commit SHAs there.
+- **Selection and tracking:** a third-party package is added only when the standard library cannot do the job, and it is pinned to an exact version. The tree-sitter packages are the only ones so far: they replaced regular expressions for reading the structure of shell commands in `derive-session-scope.py`, after review rounds kept finding defects in the regex splitting (commit `6f05551`). Renovate (`renovate.json`, `config:recommended` with the pre-commit manager enabled) opens update pull requests, and `.github/workflows/auto-merge-deps.yml` hands Renovate and Dependabot pull requests to the organisation's auto-merge workflow. Licence and vulnerability rules for dependencies are those of the organisation's security policy linked below.
+
+## Governance and policies
+
+This repository follows the Netresearch organisation policies:
+
+- [Governance](https://github.com/netresearch/.github/blob/main/GOVERNANCE.md): ownership, roles, how decisions are made and disputes resolved, and continuity.
+- [Roadmap](https://github.com/netresearch/.github/blob/main/ROADMAP.md): planned and explicitly excluded work for the coming year.
+- [Handling of dependency and code analysis findings](https://github.com/netresearch/.github/blob/main/SECURITY.md#handling-of-dependency-and-code-analysis-findings): thresholds, deadlines and the exception process for dependency (SCA) and static analysis (SAST) findings.
+- [Secret management](https://github.com/netresearch/.github/blob/main/SECURITY.md#secret-management): how CI and release credentials are stored, accessed and rotated.
+- [Access roster](https://github.com/netresearch/.github/blob/main/docs/access-roster.md): who holds administrative access to this repository and the organisation.
+
+The security assurance case of this repository (what the scripts read, write and send, trust boundaries, countermeasures and limits) is [docs/SECURITY-ASSURANCE.md](docs/SECURITY-ASSURANCE.md).
+
+Checks that run on every pull request to `main` in this repository: `Validate` (`.github/workflows/validate.yml`: skill structure, plugin manifest sync, markdownlint, yamllint, actionlint, JSON syntax, plugin and SKILL.md version checks, ShellCheck at style severity, ruff lint and format check, checkpoint schema) and `lint` (`.github/workflows/lint.yml`: Python compile, the unit tests on three Python versions, eval validation). No dependency review, Bandit or other static application security testing, or secret scanning runs on pull requests in this repository.
 
 ## Contributing
 
