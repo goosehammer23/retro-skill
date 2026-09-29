@@ -39,6 +39,7 @@ Signals implemented (Schicht A — full catalog):
 from __future__ import annotations
 
 import argparse
+import functools
 import importlib.util
 import itertools
 import json
@@ -51,16 +52,16 @@ from pathlib import Path
 from typing import Any
 
 
-def _load_masking():
-    """mask-secrets.py, loaded by path: its name is hyphenated like ours."""
-    path = Path(__file__).resolve().parent / "mask-secrets.py"
-    spec = importlib.util.spec_from_file_location("mask_secrets", path)
+def _load_sibling(filename: str):
+    """A sibling script, loaded by path: its name is hyphenated like ours."""
+    path = Path(__file__).resolve().parent / filename
+    spec = importlib.util.spec_from_file_location(path.stem.replace("-", "_"), path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-_masking = _load_masking()
+_masking = _load_sibling("mask-secrets.py")
 mask, squeeze = _masking.mask, _masking.squeeze
 
 # Line-start correction openers (EN + DE). Anchored so a mid-sentence "no" /
@@ -484,20 +485,48 @@ def message_key(tool_use: tuple) -> tuple:
 _PendingUse = tuple[int, str, dict, "str | None"]
 
 
-def _register_tool_use(
-    i: int, msg: dict, block: dict, pending: dict[str, _PendingUse]
-) -> None:
-    """Remember a tool_use block until its tool_result arrives."""
-    use_id = block.get("id")
-    if not use_id:
-        return  # no result can ever pair with it
+def _use_fields(i: int, msg: dict, block: dict) -> _PendingUse:
+    """(event_index, tool_name, input, message_id) of one tool_use block."""
     inp = block.get("input")
-    pending[use_id] = (
+    return (
         i,
         str(block.get("name") or ""),
         inp if isinstance(inp, dict) else {},
         msg.get("id") if isinstance(msg.get("id"), str) else None,
     )
+
+
+#: Cursor's tool vocabulary, renamed to the one the signals match — as
+#: `opencode-transcript.py` does for opencode, or every shell and file signal
+#: misfires. Measured over 831 Cursor calls: `Shell` takes `command` like
+#: `Bash`, `StrReplace` takes `old_string`/`new_string` like `Edit`, and
+#: `Read`, `StrReplace` and `Write` name their file `path`, not `file_path`.
+#: `ApplyPatch` takes the bare patch text as its input, in opencode's header
+#: format, and becomes the `Patch` call that adapter renders.
+CURSOR_TOOL_NAMES = {"Shell": "Bash", "StrReplace": "Edit", "ApplyPatch": "Patch"}
+CURSOR_FILE_TOOLS = ("Read", "Edit", "Write")
+
+
+@functools.cache
+def _opencode_adapter():
+    """opencode-transcript.py, loaded once and only for a Cursor patch."""
+    return _load_sibling("opencode-transcript.py")
+
+
+def _cursor_patch_files(text: str) -> list[str]:
+    """The files a Cursor patch names, read by opencode's own header parser."""
+    return _opencode_adapter()._patch_files(text, v2=False)
+
+
+def _cursor_fields(i: int, msg: dict, block: dict) -> _PendingUse:
+    """`_use_fields` of an id-less (Cursor) call, in the signals' vocabulary."""
+    i, name, inp, message_id = _use_fields(i, msg, block)
+    name = CURSOR_TOOL_NAMES.get(name, name)
+    if name in CURSOR_FILE_TOOLS and "file_path" not in inp and "path" in inp:
+        inp = {**inp, "file_path": inp["path"]}
+    if name == "Patch" and isinstance(block.get("input"), str):
+        inp = {"file_paths": _cursor_patch_files(block["input"])}
+    return i, name, inp, message_id
 
 
 def _result_text(result) -> str:
@@ -523,18 +552,35 @@ def _pair_tool_result(block: dict, pending: dict[str, _PendingUse]) -> ToolUse |
 def _pair_block(
     i: int, msg: dict, block, pending: dict[str, _PendingUse]
 ) -> ToolUse | None:
-    """Feed one content block into the pairing; return a ToolUse once complete."""
+    """Feed one content block into the pairing; return a ToolUse once complete.
+
+    A tool_use without an ``id`` comes from a format that never pairs: Cursor
+    agent transcripts omit both the id and every tool_result. Such a call is
+    emitted at once, with an empty result and Cursor's tool names translated,
+    so the tool-name signals still see it.
+    A call WITH an id stays pending, and one whose result never arrives is left
+    out: the opencode adapter withholds the result of a running call precisely
+    so that it is not counted as a successful one.
+    """
     if not isinstance(block, dict):
         return None
     if block.get("type") == "tool_use":
-        _register_tool_use(i, msg, block, pending)
+        use_id = block.get("id")
+        if not use_id:
+            i_use, name, inp, message_id = _cursor_fields(i, msg, block)
+            return ToolUse((i_use, name, inp, "", False), message_id)
+        pending[use_id] = _use_fields(i, msg, block)
     elif block.get("type") == "tool_result":
         return _pair_tool_result(block, pending)
     return None
 
 
 def extract_tool_uses(events: Iterable[dict]) -> list[ToolUse]:
-    """Return (event_index, tool_name, input, result_text, is_error) per paired call."""
+    """Return (event_index, tool_name, input, result_text, is_error) per call.
+
+    A call with an id is returned once its tool_result pairs with it; a call
+    without one (Cursor) is returned where it was issued, with an empty result.
+    """
     out = []
     tool_uses_pending: dict[str, _PendingUse] = {}
     for i, ev in enumerate(events):

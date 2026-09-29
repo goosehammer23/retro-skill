@@ -1290,6 +1290,137 @@ class TestHelpers(unittest.TestCase):
         self.assertEqual(name, "Read")
         self.assertFalse(is_error)
 
+    def test_extract_tool_uses_keeps_cursor_calls_without_ids(self):
+        events = [
+            {
+                "role": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "name": "Read",
+                            "input": {"path": "/tmp/a.rb"},
+                        },
+                        {
+                            "type": "tool_use",
+                            "name": "Read",
+                            "input": {"path": "/tmp/b.rb"},
+                        },
+                    ]
+                },
+            }
+        ]
+        result = detect.extract_tool_uses(events)
+        self.assertEqual([use[1] for use in result], ["Read", "Read"])
+        self.assertEqual([use[2]["path"] for use in result], ["/tmp/a.rb", "/tmp/b.rb"])
+        self.assertTrue(all(use[3] == "" and use[4] is False for use in result))
+
+    def test_extract_tool_uses_orders_id_less_calls_and_drops_unfinished_ones(self):
+        # An id-less call sits where it was issued, between paired ones, so
+        # order-sensitive signals (A5, the repetition ones) read it in place.
+        # A call WITH an id that never got a result is unfinished, not a
+        # success: the opencode adapter withholds such results on purpose.
+        def use(use_id, path):
+            block = {"type": "tool_use", "name": "Read", "input": {"path": path}}
+            if use_id:
+                block["id"] = use_id
+            return block
+
+        def result(use_id):
+            return {"type": "tool_result", "tool_use_id": use_id, "content": "ok"}
+
+        events = [
+            {"message": {"content": [use("a", "/a")]}},
+            {"message": {"content": [result("a")]}},
+            {"message": {"content": [use(None, "/cursor")]}},
+            {"message": {"content": [use("running", "/running")]}},
+            {"message": {"content": [use("c", "/c")]}},
+            {"message": {"content": [result("c")]}},
+        ]
+        result_uses = detect.extract_tool_uses(events)
+        self.assertEqual([u[2]["path"] for u in result_uses], ["/a", "/cursor", "/c"])
+
+    @staticmethod
+    def _cursor_events(*calls):
+        """One Cursor assistant event per call, in the measured input shapes."""
+        return [
+            {
+                "role": "assistant",
+                "message": {
+                    "content": [{"type": "tool_use", "name": name, "input": inp}]
+                },
+            }
+            for name, inp in calls
+        ]
+
+    def test_cursor_calls_are_renamed_to_the_signal_vocabulary(self):
+        events = self._cursor_events(
+            ("Shell", {"command": "git status", "description": "x"}),
+            ("StrReplace", {"path": "/a", "old_string": "o", "new_string": "n"}),
+            ("Read", {"path": "/a", "limit": 20}),
+            ("Glob", {"glob_pattern": "*.py", "target_directory": "/"}),
+        )
+        uses = detect.extract_tool_uses(events)
+        self.assertEqual([u[1] for u in uses], ["Bash", "Edit", "Read", "Glob"])
+        self.assertEqual(uses[1][2]["file_path"], "/a")
+        self.assertEqual(uses[2][2]["file_path"], "/a")
+        self.assertNotIn("file_path", uses[3][2])
+
+    def test_a_cursor_patch_between_two_reads_is_no_reread(self):
+        # ApplyPatch takes the bare patch text, not an object.
+        patch = "*** Begin Patch\n*** Update File: /a\n@@\n-o\n+n\n*** End Patch"
+        uses = detect.extract_tool_uses(
+            self._cursor_events(
+                ("Read", {"path": "/a"}),
+                ("ApplyPatch", patch),
+                ("Read", {"path": "/a"}),
+            )
+        )
+        self.assertEqual(uses[1][1], "Patch")
+        self.assertEqual(uses[1][2], {"file_paths": ["/a"]})
+        self.assertEqual(detect.signal_reread_same_file(uses), [])
+
+    def test_cursor_reads_of_distinct_files_are_no_reread(self):
+        uses = detect.extract_tool_uses(
+            self._cursor_events(("Read", {"path": "/a"}), ("Read", {"path": "/b"}))
+        )
+        self.assertEqual(detect.signal_reread_same_file(uses), [])
+
+    def test_a_cursor_edit_between_two_reads_is_no_reread(self):
+        uses = detect.extract_tool_uses(
+            self._cursor_events(
+                ("Read", {"path": "/a"}),
+                ("StrReplace", {"path": "/a", "old_string": "o", "new_string": "n"}),
+                ("Read", {"path": "/a"}),
+            )
+        )
+        self.assertEqual(detect.signal_reread_same_file(uses), [])
+
+    def test_cursor_shell_calls_split_by_command_shape(self):
+        uses = detect.extract_tool_uses(
+            self._cursor_events(
+                ("Shell", {"command": "git status"}),
+                ("Shell", {"command": "ls -la"}),
+            )
+        )
+        hist = detect.shape_histogram(uses)
+        self.assertNotIn("Shell", hist)
+        self.assertEqual(len(hist), 2)
+
+    def test_a_claude_call_named_like_a_cursor_tool_keeps_its_name(self):
+        # Only id-less calls are Cursor's; a paired call is left as written.
+        events = [
+            {
+                "message": {
+                    "content": [
+                        {"type": "tool_use", "id": "s", "name": "Shell", "input": {}}
+                    ]
+                }
+            },
+            {"message": {"content": [{"type": "tool_result", "tool_use_id": "s"}]}},
+        ]
+        self.assertEqual([u[1] for u in detect.extract_tool_uses(events)], ["Shell"])
+
 
 if __name__ == "__main__":
     unittest.main()
