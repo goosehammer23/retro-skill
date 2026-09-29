@@ -1290,6 +1290,31 @@ class TestHelpers(unittest.TestCase):
         self.assertEqual(name, "Read")
         self.assertFalse(is_error)
 
+    def test_extract_tool_uses_keeps_cursor_calls_without_ids(self):
+        events = [
+            {
+                "role": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "name": "Read",
+                            "input": {"path": "/tmp/a.rb"},
+                        },
+                        {
+                            "type": "tool_use",
+                            "name": "Read",
+                            "input": {"path": "/tmp/b.rb"},
+                        },
+                    ]
+                },
+            }
+        ]
+        result = detect.extract_tool_uses(events)
+        self.assertEqual([use[1] for use in result], ["Read", "Read"])
+        self.assertEqual([use[2]["path"] for use in result], ["/tmp/a.rb", "/tmp/b.rb"])
+        self.assertTrue(all(use[3] == "" and use[4] is False for use in result))
+
 
 if __name__ == "__main__":
     unittest.main()
