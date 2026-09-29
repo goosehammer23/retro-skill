@@ -30,7 +30,7 @@ agent-specific delta.
 
 ## What the scanner reads (and excludes)
 
-`${CLAUDE_SKILL_DIR}/scripts/scan-memory-inventory.py` is read-only by construction. It emits the
+`${CLAUDE_SKILL_DIR}/scripts/scan-memory-inventory.py` scans read-only; only its `drain` subcommand writes. It emits the
 same envelope shape as `detect-mechanical.py`, so Phases 4–10 consume it as-is.
 
 | Scanned | Signal | Note |
