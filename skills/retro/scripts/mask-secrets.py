@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+
 """
 mask-secrets.py — credential masking for text the scripts copy out of transcripts.
 

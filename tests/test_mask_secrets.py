@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+
 """Tests for skills/retro/scripts/mask-secrets.py and the fields it guards (#140).
 
 Every credential-shaped sample is assembled at runtime from a prefix and filler,

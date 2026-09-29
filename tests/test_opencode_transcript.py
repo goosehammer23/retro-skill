@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+
 """Tests for skills/retro/scripts/opencode-transcript.py.
 
 Builds a tiny opencode database under `tempfile` and asserts the JSONL the adapter

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+
 """Behavioral regressions for tracker-neutral collection (issue #137)."""
 
 from __future__ import annotations

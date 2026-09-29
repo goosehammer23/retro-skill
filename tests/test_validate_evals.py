@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+
 """Unit tests for skills/retro/scripts/validate-evals.py.
 
 Each test builds its own tiny synthetic ``evals/`` directory in a temp dir (no

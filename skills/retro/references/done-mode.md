@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # Done Mode — `/retro done`
 
 Every other retro mode asks *what did we learn*. Done mode asks *are we actually

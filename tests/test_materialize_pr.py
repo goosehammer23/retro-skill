@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+
 """Tests for skills/retro/scripts/materialize-pr.sh.
 
 Each case runs the real script against a throwaway local remote. Commit

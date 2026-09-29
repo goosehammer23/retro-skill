@@ -1,4 +1,6 @@
 ---
+# SPDX-License-Identifier: CC-BY-SA-4.0
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
 id: reusable-learning-survives-cap
 skill_under_test: retro
 mode: sweep

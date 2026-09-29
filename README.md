@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # retro — session retrospectives for Claude Code
 
 **LLM-driven session retrospection for Claude Code agents.** After a session, `/retro` reads the conversation transcript, detects friction, and routes each finding to one of seven homes — with per-proposal approval and no silent writes.

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+#
 # materialize-pr.sh — the repeatable halves of a promote materialization.
 #
 # A destination-shaped promote batch repeats the same sequence per proposal:

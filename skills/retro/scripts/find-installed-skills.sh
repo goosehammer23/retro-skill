@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+#
 # find-installed-skills.sh — discover installed Claude Code skills
 #
 # Scans known skill locations and emits a JSON array of

@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # retro-skill
 
 LLM-driven session retrospection skill. Detects friction in agent sessions and materializes learnings into correct destinations.

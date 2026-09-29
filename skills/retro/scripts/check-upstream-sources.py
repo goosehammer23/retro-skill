@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+
 """check-upstream-sources.py — mechanical upstream-drift pre-pass for
 `/retro audit --scope skill`.
 

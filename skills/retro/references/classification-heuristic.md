@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # Classification Heuristic
 
 Maps friction signals (from `friction-catalog.md`) to one of the seven destinations (from `destination-taxonomy.md`).

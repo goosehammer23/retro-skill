@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+
 """Validate local feedback supplied by the integration that owns a tracker.
 
 This module performs no discovery, imports no provider code and runs no commands.

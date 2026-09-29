@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # Testing the opencode adapter against a real opencode 2.x
 
 `skills/retro/scripts/opencode-transcript.py` reads two opencode schemas. Its unit tests build both from opencode's source schema. This page describes how to check the adapter against sessions that a real opencode 2.x wrote, without touching the opencode data already on the machine.

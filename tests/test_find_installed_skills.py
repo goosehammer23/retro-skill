@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+
 """Tests for skills/retro/scripts/find-installed-skills.sh.
 
 The script runs for real against a temporary CLAUDE_HOME. Descriptions come
