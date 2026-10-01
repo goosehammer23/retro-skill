@@ -141,30 +141,32 @@ EOF
 )
 sid="<id of the session under analysis>"
 : "${sid:?set sid}"   # an empty sid would make the last grep drop every hit
-fp_json=$(printf '%s' "$fp" | sed 's/\\/\\\\/g; s/"/\\"/g')
+fp_json=$(printf '%s' "$fp" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g')
 { grep -rl -F --include='*.jsonl' -e "$fp_json" ~/.claude/projects/
   grep -rl -F --include='*.txt' -e "$fp" ~/.claude/projects/
 } | grep -v -F "$sid"
 ```
 
-A transcript is JSON, so it stores a `"` as `\"` and a `\` as `\\`; `fp_json`
-is the fingerprint in that form. A tool result too large for the transcript
-is kept only as a short preview there, and in full as plain text under
-`<sid>/tool-results/`, which the second search reads with the fingerprint
-as printed. The last `grep` drops the session under analysis: its transcript
-is `<sid>.jsonl`, and its subagent transcripts and tool results sit under
-`<sid>/`. Then read each remaining hit: a session that only discussed the
-string is not a recurrence. Count a hit only where the string sits in a tool
-result of another session.
+A transcript is JSON, so it stores a `"` as `\"`, a `\` as `\\` and a tab as
+`\t`; `fp_json` is the fingerprint in that form. Other control characters are
+stored as `\u00XX`; leave them out of the fingerprint. A tool result too large
+for the transcript is kept only as a short preview there, and in full as plain
+text under `<sid>/tool-results/`, which the second search reads with the
+fingerprint as printed. The last `grep` drops the session under analysis: its
+transcript is `<sid>.jsonl`, and its subagent transcripts and tool results sit
+under `<sid>/`. Then read each remaining hit: a session that only discussed
+the string is not a recurrence. Count a hit only where the string sits in a
+tool result of another session.
 
-`--recurring-failures` does not replace that search. It takes no fingerprint,
-counts only calls whose result is flagged as an error (a command that prints
-an error and still exits 0 is not), drops calls a hook or the harness refused
-unless `--include-refusals` is given, lists a failure only once it occurs in at
-least two sessions, and cuts its list at `--limit`. It also reads only
-top-level transcripts, no subagent ones, looks back only `--days`, and groups
-failures by one normalised line picked from the error output, not by any
-fingerprint you have in mind. Its silence is no more evidence than a `--pattern` zero.
+`--recurring-failures` does not replace that search. It does not search for a
+fingerprint you supply, counts only calls whose result is flagged as an error
+(a command that prints an error and still exits 0 is not), drops calls a hook
+or the harness refused unless `--include-refusals` is given, lists a failure
+only once it occurs in at least two sessions, and cuts its list at `--limit`.
+It also reads only top-level transcripts, no subagent ones, looks back only
+`--days`, and groups failures by one normalised line picked from the error
+output, not by any fingerprint you have in mind. Its silence is no more
+evidence than a `--pattern` zero.
 
 For an audit, three modes read the whole window (see the Schicht C section of
 `friction-catalog.md`): `--user-correction-summary` (C1/C2),

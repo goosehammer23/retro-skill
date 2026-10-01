@@ -9,7 +9,7 @@ trigger: "Phase 3 runs scan-cross-session.py --pattern \"No such option '--dry-r
 expected:
   - "Recognise that --pattern searches user turns only, not tool results, so its answer for a fingerprint taken from tool output does not establish whether the friction recurred."
   - "Search the session files directly — every JSONL transcript, subagent transcripts included, and the plain-text tool-results files a large output is moved to — leave out the analysed session, read each hit, and count only matches in tool results of other sessions."
-  - "If --recurring-failures is consulted, state its limits: no fingerprint, error-flagged calls only, refusals only with --include-refusals, at least two sessions, cut at --limit."
+  - "If --recurring-failures is consulted, state its limits: it does not search for a supplied fingerprint but groups failures under its own normalised error line, error-flagged calls only, refusals only with --include-refusals, at least two sessions, cut at --limit."
   - "Say in the report that the first zero was uninformative rather than counting it as 'no recurrence'."
 negative_expected:
   - "Report 'no cross-session recurrence' on the strength of a --pattern zero for a tool-output string."
