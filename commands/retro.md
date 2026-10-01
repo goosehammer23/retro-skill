@@ -140,7 +140,7 @@ fp=$(cat <<'EOF'
 EOF
 )
 sid="<id of the session under analysis>"
-: "${sid:?set sid}"   # an empty sid would make the last grep drop every hit
+: "${fp:?set fp}" "${sid:?set sid}"   # an empty sid would drop every hit
 fp_json=$(printf '%s' "$fp" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g')
 { grep -rl -F --include='*.jsonl' -e "$fp_json" ~/.claude/projects/
   grep -rl -F --include='*.txt' -e "$fp" ~/.claude/projects/
@@ -148,10 +148,11 @@ fp_json=$(printf '%s' "$fp" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g')
 ```
 
 A transcript is JSON, so it stores a `"` as `\"`, a `\` as `\\` and a tab as
-`\t`; `fp_json` is the fingerprint in that form. Other control characters are
-stored as `\u00XX`; leave them out of the fingerprint. A tool result too large
-for the transcript is kept only as a short preview there, and in full as plain
-text under `<sid>/tool-results/`, which the second search reads with the
+`\t`; `fp_json` is the fingerprint in that form. Other control characters get
+escapes of their own (`\n`, `\r`, `\u00XX`); leave them out of the
+fingerprint. A tool result too large for the transcript is kept there only in
+part (a short preview, for a Bash command a longer excerpt) and in full as
+plain text under `<sid>/tool-results/`, which the second search reads with the
 fingerprint as printed. The last `grep` drops the session under analysis: its
 transcript is `<sid>.jsonl`, and its subagent transcripts and tool results sit
 under `<sid>/`. Then read each remaining hit: a session that only discussed

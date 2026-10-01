@@ -25,12 +25,12 @@ earlier sessions had hit it too. It passed the error text to
 `scan-cross-session.py --pattern` and got zero matches — even for a string that
 demonstrably sits in the current session's own transcript.
 
-The scanner's `--help` at the time stated the scope: "Search for
-keyword/phrase in user messages". An error string, a CI message or a hook denial lives in a tool
-result, which the scan does not read. It reaches a user message only when
-someone quotes it, so a zero says nothing about recurrence and a hit says only
-that the text was quoted. Reading the zero as "this friction does not recur"
-turns a blind probe into a finding.
+The scanner's `--help` at the time stated the scope: "Search for keyword/phrase
+in user messages". An error string, a CI message or a hook denial lives in a
+tool result, which the scan does not read. It reaches a user turn only when
+someone quotes it or the harness writes it there, so a zero says nothing about
+recurrence and a hit says only that the text appeared in a user turn. Reading
+the zero as "this friction does not recur" turns a blind probe into a finding.
 
 The correct behaviour is to notice the mismatch between the fingerprint's
 origin and the probe's scope, and to search the session files for the
