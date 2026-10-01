@@ -10,7 +10,7 @@ patterns. Used to detect "same friction again" (C1), "cross-project pattern"
 (C2) and "follow-up-fix session" (C5) signals.
 
 Usage:
-    python3 scan-cross-session.py --pattern "<keyword or phrase>" [--days 30] [--project <slug>]   # user turns only
+    python3 scan-cross-session.py --pattern "<keyword or phrase>" [--days 30] [--project <slug>]
     python3 scan-cross-session.py --user-correction-summary [--days 7]
     python3 scan-cross-session.py --recurring-failures [--days 30] [--limit 20] [--include-refusals]
     python3 scan-cross-session.py --follow-up-sessions [--days 30] [--window-days 7] [--limit 20]

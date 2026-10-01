@@ -133,15 +133,21 @@ in a user turn. Search every session JSONL file, subagent transcripts
 included, for such a fingerprint directly:
 
 ```bash
-fp="<fingerprint>"   # double quotes, so a single quote inside it is fine
-grep -rl -F --include='*.jsonl' -e "$fp" ~/.claude/projects/
+# Quoted heredoc: quotes, backslashes and $ inside the fingerprint stay literal.
+fp=$(cat <<'EOF'
+<fingerprint>
+EOF
+)
+sid="<id of the session under analysis>"
+grep -rl -F --include='*.jsonl' -e "$fp" ~/.claude/projects/ | grep -v -F "$sid"
 ```
 
 Inside the JSONL a `"` is stored as `\"` and a `\` as `\\`; write a
-fingerprint containing either the way the file stores it. Then read each hit:
-the transcript under analysis and a session that only discussed the string are
-not recurrences. Count a hit only where the string sits in a tool result of
-another session.
+fingerprint containing either the way the file stores it. The second `grep`
+drops the session under analysis: its own transcript is `<sid>.jsonl`, and its
+subagent transcripts sit under `<sid>/subagents/`. Then read each remaining
+hit: a session that only discussed the string is not a recurrence. Count a hit
+only where the string sits in a tool result of another session.
 
 `--recurring-failures` does not replace that search. It takes no fingerprint,
 counts only calls whose result is flagged as an error (a command that prints
