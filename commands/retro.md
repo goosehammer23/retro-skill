@@ -129,32 +129,42 @@ output the harness writes there — not tool results and not the assistant's
 replies. For a fingerprint taken from tool output — an error string, a CI
 message, a hook denial — its answer says little either way: a zero does not
 show the friction never recurred, and a hit only shows that the text appeared
-in a user turn. Search every session JSONL file, subagent transcripts
-included, for such a fingerprint directly:
+in a user turn. Search the session files directly — every transcript,
+subagent transcripts included, and the files a large tool result is moved to:
 
 ```bash
-# Quoted heredoc: quotes, backslashes and $ inside the fingerprint stay literal.
+# Quoted heredoc: quotes, backslashes and $ stay literal. Paste the fingerprint
+# as it was printed, on one line.
 fp=$(cat <<'EOF'
 <fingerprint>
 EOF
 )
 sid="<id of the session under analysis>"
-grep -rl -F --include='*.jsonl' -e "$fp" ~/.claude/projects/ | grep -v -F "$sid"
+: "${sid:?set sid}"   # an empty sid would make the last grep drop every hit
+fp_json=$(printf '%s' "$fp" | sed 's/\\/\\\\/g; s/"/\\"/g')
+{ grep -rl -F --include='*.jsonl' -e "$fp_json" ~/.claude/projects/
+  grep -rl -F --include='*.txt' -e "$fp" ~/.claude/projects/
+} | grep -v -F "$sid"
 ```
 
-Inside the JSONL a `"` is stored as `\"` and a `\` as `\\`; write a
-fingerprint containing either the way the file stores it. The second `grep`
-drops the session under analysis: its own transcript is `<sid>.jsonl`, and its
-subagent transcripts sit under `<sid>/subagents/`. Then read each remaining
-hit: a session that only discussed the string is not a recurrence. Count a hit
-only where the string sits in a tool result of another session.
+A transcript is JSON, so it stores a `"` as `\"` and a `\` as `\\`; `fp_json`
+is the fingerprint in that form. A tool result too large for the transcript
+is kept only as a short preview there, and in full as plain text under
+`<sid>/tool-results/`, which the second search reads with the fingerprint
+as printed. The last `grep` drops the session under analysis: its transcript
+is `<sid>.jsonl`, and its subagent transcripts and tool results sit under
+`<sid>/`. Then read each remaining hit: a session that only discussed the
+string is not a recurrence. Count a hit only where the string sits in a tool
+result of another session.
 
 `--recurring-failures` does not replace that search. It takes no fingerprint,
 counts only calls whose result is flagged as an error (a command that prints
 an error and still exits 0 is not), drops calls a hook or the harness refused
 unless `--include-refusals` is given, lists a failure only once it occurs in at
-least two sessions, and cuts its list at `--limit`. Its silence is no more
-evidence than a `--pattern` zero.
+least two sessions, and cuts its list at `--limit`. It also reads only
+top-level transcripts, no subagent ones, looks back only `--days`, and groups
+failures by one normalised line picked from the error output, not by any
+fingerprint you have in mind. Its silence is no more evidence than a `--pattern` zero.
 
 For an audit, three modes read the whole window (see the Schicht C section of
 `friction-catalog.md`): `--user-correction-summary` (C1/C2),
