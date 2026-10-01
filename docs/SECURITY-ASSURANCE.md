@@ -80,7 +80,7 @@ The largest flow is not a network call made by a script: everything a script pri
 | Insecure shell, workflow or Python patterns enter the repository | ShellCheck at style severity, actionlint and ruff run in `Validate` on every pull request and in the pre-commit hooks; the unit tests run in `lint` on three Python versions | `.github/workflows/validate.yml`, `.github/workflows/lint.yml`, `.pre-commit-config.yaml` |
 | A released archive is tampered with | The release workflow checks that the tag is annotated and signed, then publishes a Cosign-signed `SHA256SUMS.txt` and build-provenance attestations for the archives | `.github/workflows/release.yml` (calls the skill-repo-skill release reusable) |
 
-No secret scanning, dependency review, Bandit or Opengrep runs on pull requests in this repository; the only static analysis is CodeQL default setup (actions, python), configured outside the repository. Which checks must pass before a change reaches `main` is set in the repository settings, not in this repository.
+No secret-scanning workflow, dependency review, Bandit or Opengrep runs on pull requests in this repository (GitHub secret scanning with push protection is enabled as a repository setting); static analysis comes from CodeQL default setup (actions, python) and SonarCloud automatic analysis, both configured outside the repository. Which checks must pass before a change reaches `main` is set in the repository settings, not in this repository.
 
 ## Secure design principles applied
 
