@@ -158,9 +158,10 @@ transcript is `<sid>.jsonl`, and its subagent transcripts and tool results sit
 under `<sid>/`. Then read each remaining hit.
 
 A hit counts when the string sits in a tool result of another session as
-output of the failure itself: a command's own output, or the log of the
-failing run shown by a tool (`gh run view --log`, `glab ci trace`,
-`cat build.log`). It does not count when it sits in:
+output of the failure itself: a command's own output, a hook's or the
+harness's refusal of the call, or the log of the failing run shown by a tool
+(`gh run view --log`, `glab ci trace`, `cat build.log`). It does not count
+when it sits in:
 
 - a session that only discussed the string;
 - the session running this retro;

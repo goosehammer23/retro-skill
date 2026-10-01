@@ -8,7 +8,7 @@ learning_id: retro-20261001-pattern-user-messages-only
 trigger: "Phase 3 runs scan-cross-session.py --pattern \"No such option '--dry-run'\" for a tool error seen in this session, and the scan answers projects_with_matches: 0."
 expected:
   - "Recognise that --pattern searches user turns only, not tool results, so its answer for a fingerprint taken from tool output does not establish whether the friction recurred."
-  - "Search the session files directly — every JSONL transcript, subagent transcripts included, and the plain-text tool-results files a large output is moved to — leave out the analysed session, read each hit, and count only matches where a tool result of another session shows the string as output of the failure itself, including a CI log of the failing run."
+  - "Search the session files directly — every JSONL transcript, subagent transcripts included, and the plain-text tool-results files a large output is moved to — leave out the analysed session, read each hit, and count only matches where a tool result of another session shows the string as output of the failure itself: a command's output, a hook's or the harness's refusal, or a CI log of the failing run."
   - "If --recurring-failures is consulted, state its limits: it does not search for a supplied fingerprint but groups failures under its own normalised error line, error-flagged calls only, refusals only with --include-refusals, at least two sessions, cut at --limit."
   - "Say in the report that the first zero was uninformative rather than counting it as 'no recurrence'."
 negative_expected:
