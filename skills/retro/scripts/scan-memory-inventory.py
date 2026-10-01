@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+
 """
 scan-memory-inventory.py — inventory already-written local memory stores and emit promotable findings.
 

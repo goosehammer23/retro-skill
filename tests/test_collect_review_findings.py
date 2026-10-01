@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+
 """Unit tests for collect-review-findings.py and the artefact detection in
 derive-session-scope.py it builds on.
 

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+
 """Unit tests for skills/retro/scripts/check-eval-samples.py.
 
 Both directions are asserted throughout: an eval added or tightened without

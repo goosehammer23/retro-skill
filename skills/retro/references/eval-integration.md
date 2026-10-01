@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # Eval Integration
 
 How `/retro` consults skill `evals/` directories to inform classification and propose TDD-style stubs.

@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # Tracker-neutral feedback
 
 Retro owns relevance and classification, not tracker identity, credentials, QA

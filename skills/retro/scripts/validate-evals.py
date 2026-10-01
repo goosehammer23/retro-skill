@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+
 """Validate retro's own eval scenarios under ``evals/``.
 
 These fixtures test retro's *own* classification behaviour. This validator only

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+
 """Smoke tests for skills/retro/scripts/detect-mechanical.py.
 
 Builds tiny synthetic JSONL transcripts and asserts the detector fires the

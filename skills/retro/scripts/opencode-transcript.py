@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+
 """Render an opencode session as the JSONL shape `detect-mechanical.py` reads.
 
     python3 opencode-transcript.py --match "<a token from the session>" \\

@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+
 """Refuse an eval retro adds or tightens that carries no ``samples``.
 
 ``samples`` is the only thing the fleet's eval gate can execute:

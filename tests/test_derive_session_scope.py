@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+
 """Tests for how skills/retro/scripts/derive-session-scope.py finds repositories.
 
 The shape that prompted them: a session in a bare-repository layout

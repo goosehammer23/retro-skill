@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+
 """Tests for skills/retro/scripts/mask-secrets.py and the fields it guards (#140).
 
 Every credential-shaped sample is assembled at runtime from a prefix and filler,
@@ -370,6 +373,16 @@ class DeriveSessionScopeFieldsTest(unittest.TestCase):
             data["unresolved_forge_commands"],
             ["GH_TOKEN=[REDACTED] gh pr edit --add-label x"],
         )
+
+    def test_unresolved_path_is_masked(self):
+        events = DetectMechanicalFieldsTest._bash(
+            "t0", f"git -C /no/such/{GH} status", "", False
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "t.jsonl"
+            path.write_text("\n".join(json.dumps(e) for e in events), encoding="utf-8")
+            data = dss.collect(path)
+        self.assertEqual(data["unresolved_paths"], ["/no/such/[REDACTED]"])
 
 
 if __name__ == "__main__":

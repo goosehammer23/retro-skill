@@ -1,0 +1,103 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
+# Security assurance case — retro-skill
+
+This document states what a user can expect from this repository in terms of security, and argues why that expectation holds. Every claim names the file that implements it and, where one exists, the test that pins it. Reporting a vulnerability: see the [security policy](https://github.com/netresearch/.github/blob/main/SECURITY.md).
+
+The scripts read agent session transcripts. A transcript holds whatever passed through the session: commands with tokens in their environment, command output, pasted keys. Most of this document is therefore about what each script reads, what it writes and what leaves the machine.
+
+## What the repository ships
+
+| Part | Files | Runs where |
+| --- | --- | --- |
+| Skill instructions for an AI agent | `skills/retro/SKILL.md`, `skills/retro/references/*.md`, `commands/retro.md` | Read by the agent as instructions; not executed. The agent runs the commands they describe with the user's privileges. |
+| Eval scenarios | `skills/retro/evals/*.md` | Text for grading a retro transcript; not executed. |
+| Analysis scripts | twelve executables under `skills/retro/scripts/` (`*.py` with a shebang, `find-installed-skills.sh`, `materialize-pr.sh`) and two libraries they load by path (`mask-secrets.py`, `feedback-contract.py`) | On the user's machine, started by the agent. |
+| Optional hook | `hooks/session-end.json` | Only if the user merges it into a Claude Code `settings.json`. |
+| Repository checks | `.github/workflows/*.yml`, `.pre-commit-config.yaml`, `tests/` | In this repository's CI and on contributors' machines. |
+
+The repository ships no server component, no container image and no library for other programs. It holds no credentials of its own. The only network clients it starts are `gh`, `glab` and `git`, with the user's own configuration, one `urllib` link check, and `uv`, which on the first run of `derive-session-scope.py` or `collect-review-findings.py` installs their two tree-sitter packages from the configured package index.
+
+## Security requirements
+
+1. No script executes text taken from a transcript, a forge comment, a memory note or a skill file. Every child process gets its arguments as a list or as double-quoted words.
+2. Transcript text that a script sends to the network is limited to identifiers: repository owner and name, GitLab project path and host, and PR, MR or issue numbers.
+3. Scripts that quote transcript text in their findings pass it through `mask-secrets.py` first. Where a script does not, this document says so.
+4. Only two scripts change anything on disk: `scan-memory-inventory.py drain` and `materialize-pr.sh`. Everything else only reads and prints to stdout.
+5. `materialize-pr.sh` commits only the files it is given, signs the commit, never force-pushes and never merges.
+6. Supplied input is validated before use: feedback files, PR/MR references and GitLab hosts are checked against fixed shapes and an allowlist.
+7. A failure is reported with a non-zero exit status, not as an empty result.
+8. Nothing committed to this repository contains a secret, and a release can be verified against the build that produced it.
+
+## Data flows: read, write, send
+
+| Script | Reads | Writes | Sends over the network |
+| --- | --- | --- | --- |
+| `detect-mechanical.py` | one transcript (`--transcript-file`); `~/.claude/CLAUDE.md` for keyword matching only | nothing | nothing; starts no process |
+| `scan-cross-session.py` | `~/.claude/projects/*/*.jsonl` (or `--projects-dir`) within `--days` | nothing | nothing; runs `git rev-parse` and `git for-each-ref` locally in `--follow-up-sessions` |
+| `derive-session-scope.py` | one transcript; directory metadata of the paths it names | nothing | none of its input; runs `git -C <dir> rev-parse` with fixed options; on first use, `uv run --script` (the shebang) downloads `tree-sitter` and `tree-sitter-bash` from the configured package index |
+| `collect-review-findings.py` | one transcript (through `derive-session-scope.py`), `--feedback-file`, `--pr-list` | nothing | through `gh api graphql` and `glab api`: owner, repository, number, GitLab project path, a fixed query; the CLIs authenticate with their own stored credentials; on first use, `uv run --script` (the shebang) downloads `tree-sitter` and `tree-sitter-bash` from the configured package index |
+| `opencode-transcript.py` | an opencode SQLite database, opened read-only | nothing; prints JSONL to stdout | nothing |
+| `scan-memory-inventory.py` | `~/.claude/projects/*/memory/*.md`; optionally `CLAUDE.md` files | scan: nothing; `drain`: moves one note into `.promoted/` and rewrites `MEMORY.md` beside it | nothing |
+| `find-org-skills.py` | `~/.claude/plugins/` marketplace and plugin manifests, installed `SKILL.md` files | nothing | nothing |
+| `find-installed-skills.sh` | installed skill directories, their manifests and `git config remote.origin.url` | nothing | nothing |
+| `check-upstream-sources.py` | a skill's `SKILL.md`, `references/*.md`, `checkpoints.yaml` | nothing | an HTTP `HEAD` (or `GET` after 405) to each linked URL, with a fixed User-Agent; no body is read; `--offline` sends nothing |
+| `check-eval-samples.py` | named `evals.json` files and their base version via `git show` | nothing | nothing |
+| `validate-evals.py` | `skills/retro/evals/*.md` | nothing | nothing |
+| `materialize-pr.sh` | git refs, the body file, the named files | a worktree and branch (`start`); a signed commit (`finish`) | `git fetch` and `git push` to `origin`; `gh pr create` with the title and body file |
+| `hooks/session-end.json` | the hook's stdin JSON and the transcript's word count | nothing | nothing; prints a reminder with the count |
+
+The largest flow is not a network call made by a script: everything a script prints goes into the agent's context, and from there to the model provider the user's agent talks to. The agent may then quote it into memory files, issues and pull requests, which is the purpose of a retro. `mask-secrets.py` is the control on that flow.
+
+## Actors and trust boundaries
+
+- **User and agent.** The agent reads the skill and runs the scripts with the user's privileges. What it runs, what it quotes and what it publishes is decided by the agent and the user. The skill requires explicit per-proposal approval before any write (`SKILL.md`, README "How it stays safe"); that is an instruction to the agent, not a mechanism in the scripts.
+- **Transcripts and memory notes.** Written by past sessions; treated as untrusted data. They are parsed, never executed.
+- **Forges.** Comment and review bodies from GitHub and GitLab are written by reviewers, bots and anyone who can comment. `collect-review-findings.py` passes them to the agent as data.
+- **Installed plugins and marketplaces.** Catalogue entries and `SKILL.md` descriptions come from third parties; `find-org-skills.py` and `find-installed-skills.sh` report them as data.
+- **`gh`, `glab`, `git`.** Hold the user's credentials and decide how to authenticate to their hosts. The scripts pass no credentials to them.
+- **Contributors and CI.** Changes are proposed as pull requests and checked by the workflows in `.github/workflows/`. `lint.yml` and `auto-merge-deps.yml` start from `permissions: {}`, `validate.yml` from `contents: read`; each job gets only the scopes its reusable workflow needs. `release.yml` has no top-level block and grants its job `contents`, `id-token` and `attestations: write`. `auto-merge-deps.yml` runs on `pull_request_target`, calls the organisation's reusable without passing secrets, and does not check out pull request code.
+
+## Threats and countermeasures
+
+| Threat | Countermeasure | Evidence |
+| --- | --- | --- |
+| Transcript text is run as a command (CWE-78) | No script uses `shell=True`, the os-module shell calls or `eval`. Every `subprocess.run` takes a list. Shell commands in transcripts are parsed with tree-sitter-bash, never run. The shell scripts double-quote every expansion and put `--` before file lists | `derive-session-scope.py`, `check-eval-samples.py`, `scan-cross-session.py`, `collect-review-findings.py` (`default_runner`), `materialize-pr.sh`; `tests/test_materialize_pr.py` |
+| A value from input is read by git as an option (CWE-88) | `check-eval-samples.py` allowlists revision and path characters and passes `--end-of-options`; other git calls take transcript paths only as the argument of `-C` | `tests/test_check_eval_samples.py` (`test_option_like_revision_is_not_read_as_a_git_flag`, `test_git_is_called_with_end_of_options`) |
+| An inherited `GIT_DIR` points git at another repository | The git calls remove `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`, `GIT_INDEX_FILE` and `GIT_OBJECT_DIRECTORY` from the child's environment | `test_git_dir_in_the_environment_does_not_redirect_the_probe` in `tests/test_derive_session_scope.py` and `tests/test_scan_cross_session.py`; `test_git_dir_in_the_environment_does_not_redirect_the_read` |
+| A credential in a transcript is quoted into a finding (CWE-532) | `detect-mechanical.py`, `scan-cross-session.py` and `derive-session-scope.py` pass every free-text snippet, command, stderr line, prefix and unresolved path through `mask()` or `squeeze()`; `squeeze()` masks before it truncates, so a cut token cannot leak its head | `mask-secrets.py`; `tests/test_mask_secrets.py` (`test_each_sample_is_masked`, `test_token_straddling_the_limit_ships_no_head`, `test_every_snippet_signal_masks`, `test_unresolved_forge_command_is_masked`, `test_unresolved_path_is_masked`) |
+| A masking pattern is dropped or added without a test | Every named pattern must carry exactly one sample in the tests | `test_every_alternative_has_exactly_one_sample`, `test_negatives_are_left_alone` |
+| A crafted string makes masking hang (CWE-1333) | The curl-user pattern is written so a long run of `=` stays linear | `test_long_equals_run_after_a_curl_user_option_stays_linear` |
+| An SQL query on the opencode database is altered by input (CWE-89), or the database is modified | Values are bound as parameters; table names come from a constant map; `LIKE` wildcards are escaped; the database is opened with `mode=ro` and a percent-encoded path, so a `?` in the path cannot override the mode | `opencode-transcript.py` (`_connect`); `tests/test_opencode_transcript.py` (`test_a_path_carrying_a_query_cannot_override_the_read_only_mode`, `test_a_like_wildcard_in_the_token_matches_only_itself`) |
+| A forge reference in a transcript or feedback file sends requests to an arbitrary GitLab host | GitLab hosts must be in the allowlist from `--gitlab-host` or `$GITLAB_HOST` (default `gitlab.com`), checked before any call; GitHub references must match `github.com/<owner>/<repo>/pull/<n>` | `collect-review-findings.py` (`gitlab_hosts_from`); `tests/test_collect_review_findings.py` (`test_a_foreign_gitlab_host_is_not_contacted`, `test_a_gitlab_host_outside_the_allowlist_is_refused`, `test_a_lookalike_path_on_another_host_stays_external`) |
+| A supplied feedback file is malformed, oversized or smuggles data | Files over 10 MiB are refused; duplicate and unknown keys, control characters outside the body, and URLs with userinfo or without HTTPS are rejected | `feedback-contract.py` (`load_files`, `canonical_url`); `tests/test_tracker_neutrality.py` (`test_files_are_size_bounded`, `test_unknown_keys_are_rejected_at_every_level`, `test_duplicate_json_keys_are_rejected`, `test_control_characters_are_rejected_outside_the_body`) |
+| Untrusted structured input is deserialised into objects (CWE-502) | Only `json.loads` is used; YAML-like front matter is read by small line parsers; no YAML or binary object loader is imported | `validate-evals.py`, `scan-memory-inventory.py`, `find-org-skills.py`, `check-upstream-sources.py` |
+| `drain` moves or overwrites a file outside the memory store (CWE-22) | The resolved path must be a file in `<memory-root>/<slug>/memory/`, a project's `memory` directory under the resolved `--memory-root`; notes are renamed into `.promoted/`, never deleted, and an existing tombstone is not overwritten; `--expect-sha256` refuses a note that changed since it was read | `scan-memory-inventory.py` (`cmd_drain`); `tests/test_scan_memory_inventory.py` (`test_drain_refuses_path_outside_store`, `test_drain_refuses_memory_dir_outside_root`, `test_drain_does_not_clobber_existing_tombstone`, `test_drain_refuses_on_sha_mismatch`) |
+| A skill plugin's manifest points discovery at files outside its install directory | `skills` entries that resolve outside the install root are ignored | `find-org-skills.py`; `test_manifest_skill_path_outside_the_install_root_is_ignored` |
+| A skill-update PR ships unrelated files or unsigned commits | `materialize-pr.sh finish` stages and commits only the named files (a commit pathspec keeps anything else already staged out), commits with `-S --signoff`, pushes without force and opens the PR for the named branch; it refuses a new or tightened eval without samples before any git write | `materialize-pr.sh`; `tests/test_materialize_pr.py` (`test_finish_commits_only_the_named_files`); `test_finish_refuses_a_new_eval_without_samples` |
+| A missing tool or unreadable input looks like "nothing found" | `find-installed-skills.sh` exits 2 without `jq` or `python3`; `collect-review-findings.py` exits 1 when an artefact could not be read and 2 on invalid input; malformed transcript lines are skipped, not fatal | `test_missing_jq_is_an_error_not_an_empty_list`; `test_each_malformed_shape_exits_cleanly` |
+| Insecure shell, workflow or Python patterns enter the repository | ShellCheck at style severity, actionlint and ruff run in `Validate` on every pull request and in the pre-commit hooks; the unit tests run in `lint` on three Python versions | `.github/workflows/validate.yml`, `.github/workflows/lint.yml`, `.pre-commit-config.yaml` |
+| A released archive is tampered with | The release workflow checks that the tag is annotated and signed, then publishes a Cosign-signed `SHA256SUMS.txt` and build-provenance attestations for the archives | `.github/workflows/release.yml` (calls the skill-repo-skill release reusable) |
+
+No secret-scanning workflow, dependency review, Bandit or Opengrep runs on pull requests in this repository (GitHub secret scanning with push protection is enabled as a repository setting); static analysis comes from CodeQL default setup (actions, python) and SonarCloud automatic analysis, both configured outside the repository. Which checks must pass before a change reaches `main` is set in the repository settings, not in this repository.
+
+## Secure design principles applied
+
+- **Least privilege:** ten of the twelve scripts write nothing to disk and change no git or forge state. Writing is confined to `drain` (one note and its index) and `materialize-pr.sh` (one worktree, one branch, one PR). No script holds or passes a credential; `gh`, `glab` and `git` use their own.
+- **Fail-safe defaults:** the shell scripts run under `set -euo pipefail`; unknown GitLab hosts are refused; `opencode-transcript.py` refuses an ambiguous or unknown session instead of rendering an empty one; `check-eval-samples.py` treats an unreadable base as "new", which is the stricter answer.
+- **Economy of mechanism:** apart from tree-sitter for shell parsing, the scripts use only the Python standard library; masking is one shared module.
+- **Complete mediation of input:** every external input (transcript line, database row, feedback file, forge reference, CLI output) is parsed as data at the boundary where it enters.
+- **Open design:** everything the skill tells an agent to do is plain text in `SKILL.md`, `commands/retro.md` and `references/`, reviewable before use.
+
+## What a user cannot expect
+
+- **Masking is pattern-based.** `mask-secrets.py` knows a fixed list of credential shapes (GitHub, GitLab `glpat-`, `sk-` API keys, AWS, Slack, npm, Google, Vault, JWTs, PEM private keys, `Authorization`/`PRIVATE-TOKEN` headers, credentials in URLs and in `curl -u`). A secret of another shape, for example a plain `PASSWORD=…` assignment, is printed as it appears in the transcript.
+- **Some outputs are not masked at all.** `opencode-transcript.py` prints the whole session, tool output included; its output must be treated like the database it came from. `collect-review-findings.py` prints forge comment bodies and the last error line of `gh`/`glab` as they are. `scan-memory-inventory.py` prints note text. `detect-mechanical.py` prints the file paths of Read calls, and `find-installed-skills.sh` each skill's git remote URL as configured.
+- **Output goes to the model provider.** Whatever a script prints enters the agent's context. Do not run `/retro` over sessions whose content must not reach the model the agent uses.
+- **Third-party text is data, but the agent reads it.** Forge comments, skill descriptions and memory notes can contain instructions aimed at the agent. The scripts strip control characters from forge text in text mode but do not mark it as untrusted.
+- **The skill gives guidance; it does not enforce it.** Per-proposal approval, per-private-repository confirmation and "no auto-merge" are instructions to the agent. `allowed-tools` in a skill only removes the confirmation prompt for the tools it lists; it takes no tool away from the agent. Review what the agent proposes to write or publish.
+- **Resource use is not bounded.** `detect-mechanical.py` and `scan-cross-session.py` read each transcript fully into memory. Some malformed inputs (a corrupt opencode database row, a non-UTF-8 eval file) end a run with a traceback rather than a message.
+- **Dependencies are pinned by version, not by hash.** `uv` installs `tree-sitter` and `tree-sitter-bash` from the configured package index on first use.
+- **`check-upstream-sources.py` contacts every URL the audited skill links to**, unless run with `--offline`.
+- Security fixes follow the supported-versions rules of the organisation's security policy; older releases may not receive them.

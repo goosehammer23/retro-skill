@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+
 name: lint
 
 # Python compile + unit tests + eval validation via the shared
@@ -8,7 +11,7 @@ name: lint
 #
 # Shell, YAML, Markdown, ruff and workflow linting for this repo run in
 # .github/workflows/validate.yml (netresearch/skill-repo-skill validate.yml),
-# which already ShellChecks every *.sh at -S error and schema-validates
+# which already ShellChecks every *.sh at -S style and schema-validates
 # skills/retro/checkpoints.yaml.
 
 on:

@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+
 """Unit tests for skills/retro/scripts/find-org-skills.py (org+installed skill discovery)."""
 
 from __future__ import annotations

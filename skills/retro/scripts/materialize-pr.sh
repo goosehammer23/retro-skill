@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+#
 # materialize-pr.sh — the repeatable halves of a promote materialization.
 #
 # A destination-shaped promote batch repeats the same sequence per proposal:
@@ -17,12 +20,14 @@
 #       origin/HEAD is not set.
 #   materialize-pr.sh finish <worktree-dir> <title> <body-file> <file>...
 #       Refuses first when a named evals.json adds or tightens an eval that
-#       carries no `samples` (check-eval-samples.py). Then stages ONLY the
-#       named files (never -A), commits signed (-S --signoff, message =
-#       title), pushes -u, opens the PR for that branch (--head) with
+#       carries no `samples` (check-eval-samples.py). Then stages and commits
+#       ONLY the named files (never -A; other staged changes stay out of the
+#       commit), signed (-S --signoff, message = title), pushes -u, opens the PR for that branch (--head) with
 #       --body-file, prints the PR URL.
 #
-# Exit: 0 ok; 2 usage/error. Never force-pushes, never merges.
+# Exit: 0 ok; 2 unknown command, no file named, body file not found or an
+# eval refused; 1 a missing positional argument; a failing git or gh command
+# ends the script with that command's status. Never force-pushes, never merges.
 set -euo pipefail
 
 die() { printf 'materialize-pr: %s\n' "$1" >&2; exit 2; }
@@ -56,7 +61,9 @@ finish)
     python3 "$(dirname "$0")/check-eval-samples.py" --repo "$wt" -- "$@" \
         || die "eval(s) added or tightened without samples - see above"
     git -C "$wt" add -- "$@"
-    git -C "$wt" commit -S --signoff -m "$title"
+    # The pathspec limits the commit to the named files: anything else that
+    # was already staged in the worktree stays out of it.
+    git -C "$wt" commit -S --signoff -m "$title" -- "$@"
     git -C "$wt" push -u origin "$branch"
     # From the worktree, and with --head: gh otherwise takes the head branch
     # and its gh-merge-base (the PR's base) from the caller's checkout.

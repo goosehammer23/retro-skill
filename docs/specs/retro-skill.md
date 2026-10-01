@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # Spec: `retro-skill` — LLM-driven Session Retrospection
 
 > **Superseded (2026-07-12).** This Phase-1 spec kept Coach as an optional cross-session data source (its `events.sqlite` friction log was the "Anlass"). That decision was reversed: Coach is retired, and `retro` now analyzes sessions directly — an LLM pass over the actual session judges friction semantically, which beats Coach's pre-recorded regex heuristics. Retro's Coach-events consumer was removed in [retro-skill#32](https://github.com/netresearch/retro-skill/pull/32); Coach is archived ([claude-coach-plugin](https://github.com/netresearch/claude-coach-plugin)). The Coach-related sections below are kept as historical record of the original decision.

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+
 """Regression tests for the review findings on detect-mechanical.py.
 
 Each class pins one finding; the first case in each is the reviewer's

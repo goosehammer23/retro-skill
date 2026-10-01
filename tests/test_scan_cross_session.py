@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+
 """Unit tests for skills/retro/scripts/scan-cross-session.py (Schicht C)."""
 
 from __future__ import annotations

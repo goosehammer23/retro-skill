@@ -1,4 +1,6 @@
 ---
+# SPDX-License-Identifier: CC-BY-SA-4.0
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
 description: "Session retrospection — detect friction AND reusable learnings, classify into destinations, materialize approved learnings"
 ---
 

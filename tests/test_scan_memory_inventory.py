@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+
 """Unit tests for skills/retro/scripts/scan-memory-inventory.py (the /retro promote front-end)."""
 
 from __future__ import annotations
