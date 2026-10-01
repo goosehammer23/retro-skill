@@ -155,13 +155,21 @@ part (a short preview, for a Bash command a longer excerpt) and in full as
 plain text under `<sid>/tool-results/`, which the second search reads with the
 fingerprint as printed. The last `grep` drops the session under analysis: its
 transcript is `<sid>.jsonl`, and its subagent transcripts and tool results sit
-under `<sid>/`. Then read each remaining hit. Not a recurrence: a session that
-only discussed the string, the session running this retro, a tool result that
-shows a file or text quoting the string (a diff, a PR body, this page), a tool
-result that only repeats a probe for the string, such as `--pattern` output,
-which echoes its pattern, and an earlier run of this search, which matches
-through its own command rather than a tool result. Count a hit only where the
-string sits in a tool result of another session that produced it.
+under `<sid>/`. Then read each remaining hit.
+
+A hit counts when the string sits in a tool result of another session as
+output of the failure itself: a command's own output, or the log of the
+failing run shown by a tool (`gh run view --log`, `glab ci trace`,
+`cat build.log`). It does not count when it sits in:
+
+- a session that only discussed the string;
+- the session running this retro;
+- a tool result showing a document that quotes the string (a diff, a PR body,
+  a skill or eval file);
+- a tool result that only echoes a probe for the string, such as `--pattern`
+  output, which repeats its pattern;
+- an earlier run of this search, which matches through its own command, not
+  through a tool result.
 
 `--recurring-failures` does not replace that search. It does not search for a
 fingerprint you supply, counts only calls whose result is flagged as an error
