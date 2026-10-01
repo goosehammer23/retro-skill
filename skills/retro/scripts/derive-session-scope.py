@@ -1658,7 +1658,8 @@ def collect(transcript: Path, gitlab_host: str = "") -> dict[str, Any]:
         # Not truncated. This is the list whose whole purpose is "read these,
         # a missing repository hides here", and a silent [:20] would drop the
         # entries a long session most needs to see.
-        "unresolved_paths": sorted(unresolved),
+        # Raw transcript text, so masked like every other snippet.
+        "unresolved_paths": sorted(mask(p) for p in unresolved),
         "commands_scanned": len(commands),
         # Native artifacts, opaque references and unresolved writes stay distinct.
         **forge_artefacts,
