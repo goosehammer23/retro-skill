@@ -8,14 +8,14 @@ learning_id: retro-20261001-pattern-user-messages-only
 trigger: "Phase 3 runs scan-cross-session.py --pattern \"No such option '--dry-run'\" for a tool error seen in this session, and the scan answers projects_with_matches: 0."
 expected:
   - "Recognise that --pattern searches user turns only, not tool results, so its answer for a fingerprint taken from tool output does not establish whether the friction recurred."
-  - "Search the session files directly — every JSONL transcript, subagent transcripts included, and the plain-text tool-results files a large output is moved to — leave out the analysed session, read each hit, and count only matches in tool results of other sessions."
+  - "Search the session files directly — every JSONL transcript, subagent transcripts included, and the plain-text tool-results files a large output is moved to — leave out the analysed session, read each hit, and count only matches in tool results of other sessions that produced the string."
   - "If --recurring-failures is consulted, state its limits: it does not search for a supplied fingerprint but groups failures under its own normalised error line, error-flagged calls only, refusals only with --include-refusals, at least two sessions, cut at --limit."
   - "Say in the report that the first zero was uninformative rather than counting it as 'no recurrence'."
 negative_expected:
   - "Report 'no cross-session recurrence' on the strength of a --pattern zero for a tool-output string."
   - "Downgrade a finding's severity because the --pattern scan found no other session."
   - "Treat an empty --recurring-failures list as proof that the fingerprint never recurred."
-  - "Count a hit in the transcript under analysis, in its subagent transcripts, or in a session that only discussed the string, as a recurrence."
+  - "Count a hit in the transcript under analysis, in its subagent transcripts, in the session running the retro, in a session that only discussed the string, or in a tool result that only repeats a probe for it (such as --pattern output), as a recurrence."
 ---
 
 # Scenario: a zero from a probe that does not read tool output
