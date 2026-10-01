@@ -776,7 +776,10 @@ def main() -> int:
     parser.add_argument("--projects-dir", type=Path, default=DEFAULT_PROJECTS_DIR)
     parser.add_argument("--project", help="Specific project slug (e.g. -home-sme-p)")
     parser.add_argument("--days", type=int, default=30)
-    parser.add_argument("--pattern", help="Search for keyword/phrase in user messages")
+    parser.add_argument(
+        "--pattern",
+        help="Search for keyword/phrase in user turns (mostly typed text; not tool results or assistant replies)",
+    )
     parser.add_argument(
         "--user-correction-summary",
         action="store_true",

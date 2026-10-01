@@ -124,6 +124,64 @@ Scan session JSONL across projects for related friction:
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/scan-cross-session.py --pattern "<fingerprint>"
 ```
 
+`--pattern` searches **user turns only** — mostly text the user typed, plus
+output the harness writes there — not tool results and not the assistant's
+replies. For a fingerprint taken from tool output — an error string, a CI
+message, a hook denial — its answer says little either way: a zero does not
+show the friction never recurred, and a hit only shows that the text appeared
+in a user turn. Search the session files directly — every transcript,
+subagent transcripts included, and the files a large tool result is moved to:
+
+```bash
+# Quoted heredoc: quotes, backslashes and $ stay literal. Paste the fingerprint
+# as it was printed, on one line.
+fp=$(cat <<'EOF'
+<fingerprint>
+EOF
+)
+sid="<id of the session under analysis>"
+: "${fp:?set fp}" "${sid:?set sid}"   # an empty sid would drop every hit
+fp_json=$(printf '%s' "$fp" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g')
+{ grep -rl -F --include='*.jsonl' -e "$fp_json" ~/.claude/projects/
+  grep -rl -F --include='*.txt' -e "$fp" ~/.claude/projects/
+} | grep -v -F "$sid"
+```
+
+A transcript is JSON, so it stores a `"` as `\"`, a `\` as `\\` and a tab as
+`\t`; `fp_json` is the fingerprint in that form. Other control characters get
+escapes of their own (`\n`, `\r`, `\u00XX`); leave them out of the
+fingerprint. A tool result too large for the transcript is kept there only in
+part (a short preview, for a Bash command a longer excerpt) and in full as
+plain text under `<sid>/tool-results/`, which the second search reads with the
+fingerprint as printed. The last `grep` drops the session under analysis: its
+transcript is `<sid>.jsonl`, and its subagent transcripts and tool results sit
+under `<sid>/`. Then read each remaining hit.
+
+A hit counts when the string sits in a tool result of another session as
+output of the failure itself: a command's own output, a hook's or the
+harness's refusal of the call (its reason, not the command it quotes back),
+or the log of the failing run shown by a tool (`gh run view --log`,
+`glab ci trace`, `cat build.log`). It does not count when it sits in:
+
+- a session that only discussed the string;
+- the session running this retro;
+- a tool result showing a document that quotes the string (a diff, a PR body,
+  a skill or eval file);
+- a tool result that only echoes a probe for the string, such as `--pattern`
+  output, which repeats its pattern;
+- an earlier run of this search, which matches through its own command, not
+  through a tool result.
+
+`--recurring-failures` does not replace that search. It does not search for a
+fingerprint you supply, counts only calls whose result is flagged as an error
+(a command that prints an error and still exits 0 is not), drops calls a hook
+or the harness refused unless `--include-refusals` is given, lists a failure
+only once it occurs in at least two sessions, and cuts its list at `--limit`.
+It also reads only top-level transcripts, no subagent ones, looks back only
+`--days`, and groups failures by one normalised line picked from the error
+output, not by any fingerprint you have in mind. Its silence is no more
+evidence than a `--pattern` zero.
+
 For an audit, three modes read the whole window (see the Schicht C section of
 `friction-catalog.md`): `--user-correction-summary` (C1/C2),
 `--recurring-failures` (C1) and `--follow-up-sessions` (C5).
