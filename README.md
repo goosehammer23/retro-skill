@@ -330,7 +330,7 @@ This repository follows the Netresearch organisation policies:
 
 The security assurance case of this repository (what the scripts read, write and send, trust boundaries, countermeasures and limits) is [docs/SECURITY-ASSURANCE.md](docs/SECURITY-ASSURANCE.md).
 
-Checks that run on every pull request to `main` in this repository: `Validate` (`.github/workflows/validate.yml`: skill structure, plugin manifest sync, markdownlint, yamllint, actionlint, JSON syntax, plugin and SKILL.md version checks, ShellCheck at style severity, ruff lint and format check, checkpoint schema) and `lint` (`.github/workflows/lint.yml`: Python compile, the unit tests on three Python versions, eval validation). No dependency review, Bandit or other static application security testing, or secret scanning runs on pull requests in this repository.
+Checks that run on every pull request to `main` in this repository: `Validate` (`.github/workflows/validate.yml`: skill structure, plugin manifest sync, markdownlint, yamllint, actionlint, JSON syntax, plugin and SKILL.md version checks, ShellCheck at style severity, ruff lint and format check, checkpoint schema) and `lint` (`.github/workflows/lint.yml`: Python compile, the unit tests on three Python versions, eval validation; its Bandit job is skipped because `run-bandit` is not set). Also on every pull request: Auto-merge dependency PRs (`.github/workflows/auto-merge-deps.yml`), skipped unless Renovate or Dependabot opened it, and, configured outside the workflow files, CodeQL default setup (actions, python) and the DCO check. No dependency review, Bandit or secret scanning runs on pull requests in this repository; CodeQL is the only static analysis.
 
 ## Contributing
 
