@@ -124,10 +124,11 @@ Scan session JSONL across projects for related friction:
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/scan-cross-session.py --pattern "<fingerprint>"
 ```
 
-`--pattern` matches **user messages only**. A fingerprint taken from tool
-output — an error string, a CI message, a hook denial — returns zero by
-construction, so that zero is not evidence the friction never recurred. For
-those, use `--recurring-failures` (with `--include-refusals` for calls a hook
+`--pattern` searches **user messages only**, not tool results. For a
+fingerprint taken from tool output — an error string, a CI message, a hook
+denial — its answer says little either way: a zero does not show the friction
+never recurred, and a hit only shows that someone quoted the text. For those,
+use `--recurring-failures` (with `--include-refusals` for calls a hook
 refused) or search the session JSONL files directly.
 
 For an audit, three modes read the whole window (see the Schicht C section of
