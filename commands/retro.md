@@ -124,12 +124,22 @@ Scan session JSONL across projects for related friction:
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/scan-cross-session.py --pattern "<fingerprint>"
 ```
 
-`--pattern` searches **user messages only**, not tool results. For a
-fingerprint taken from tool output — an error string, a CI message, a hook
-denial — its answer says little either way: a zero does not show the friction
-never recurred, and a hit only shows that someone quoted the text. For those,
-use `--recurring-failures` (with `--include-refusals` for calls a hook
-refused) or search the session JSONL files directly.
+`--pattern` searches **only text the user typed** — not tool results and not
+the assistant's replies. For a fingerprint taken from tool output — an error
+string, a CI message, a hook denial — its answer says little either way: a
+zero does not show the friction never recurred, and a hit only shows that the
+user quoted the text. Search the session JSONL files for such a fingerprint
+directly:
+
+```bash
+grep -l -F -- '<fingerprint>' ~/.claude/projects/*/*.jsonl
+```
+
+`--recurring-failures` does not replace that search. It takes no fingerprint,
+counts only calls whose result is flagged as an error (a command that prints
+an error and still exits 0 is not), lists a failure only once it occurs in at
+least two sessions, and cuts its list at `--limit`. Its silence is no more
+evidence than a `--pattern` zero.
 
 For an audit, three modes read the whole window (see the Schicht C section of
 `friction-catalog.md`): `--user-correction-summary` (C1/C2),

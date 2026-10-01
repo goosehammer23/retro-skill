@@ -7,12 +7,14 @@ mode: sweep
 learning_id: retro-20261001-pattern-user-messages-only
 trigger: "Phase 3 runs scan-cross-session.py --pattern \"No such option '--dry-run'\" for a tool error seen in this session, and the scan answers projects_with_matches: 0."
 expected:
-  - "Recognise that --pattern searches user messages only and not tool results, so its answer for a fingerprint taken from tool output does not establish whether the friction recurred."
-  - "Re-run the recurrence check with --recurring-failures, adding --include-refusals for hook denials, or search the session JSONL files directly, and report that result instead."
+  - "Recognise that --pattern searches only text the user typed, not tool results, so its answer for a fingerprint taken from tool output does not establish whether the friction recurred."
+  - "Search the session JSONL files for the fingerprint directly and report that result instead."
+  - "If --recurring-failures is consulted, state its limits: no fingerprint, error-flagged calls only, at least two sessions, cut at --limit."
   - "Say in the report that the first zero was uninformative rather than counting it as 'no recurrence'."
 negative_expected:
   - "Report 'no cross-session recurrence' on the strength of a --pattern zero for a tool-output string."
   - "Downgrade a finding's severity because the --pattern scan found no other session."
+  - "Treat an empty --recurring-failures list as proof that the fingerprint never recurred."
 ---
 
 # Scenario: a zero from a probe that does not read tool output
@@ -30,10 +32,11 @@ that the text was quoted. Reading the zero as "this friction does not recur"
 turns a blind probe into a finding.
 
 The correct behaviour is to notice the mismatch between the fingerprint's
-origin and the probe's scope, and to measure with an instrument that can see
-tool output: `--recurring-failures` for failing tool calls (with
-`--include-refusals` when a hook refused the call), or a direct search of the
-JSONL files. Only that result goes into the report.
+origin and the probe's scope, and to search the JSONL files for the
+fingerprint directly. `--recurring-failures` is no substitute: the error in
+this case came from a shell loop that printed it and exited 0, so the call was
+never flagged as an error and that mode could not list it either. Only the
+direct search goes into the report.
 
 The general form: **before a zero becomes evidence, ask whether the probe could
 have returned anything else.**
