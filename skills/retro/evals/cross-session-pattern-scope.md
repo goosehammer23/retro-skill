@@ -15,7 +15,7 @@ negative_expected:
   - "Report 'no cross-session recurrence' on the strength of a --pattern zero for a tool-output string."
   - "Downgrade a finding's severity because the --pattern scan found no other session."
   - "Treat an empty --recurring-failures list as proof that the fingerprint never recurred."
-  - "Count a hit in the transcript under analysis, in its subagent transcripts, in the session running the retro, in a session that only discussed the string, or in a tool result that only repeats a probe for it (such as --pattern output), as a recurrence."
+  - "Count a hit in the transcript under analysis, in its subagent transcripts, in the session running the retro, in a session that only discussed the string, in a tool result that shows a file quoting it, in a tool result that only repeats a probe for it (such as --pattern output), or in an earlier run of this search, as a recurrence."
 ---
 
 # Scenario: a zero from a probe that does not read tool output

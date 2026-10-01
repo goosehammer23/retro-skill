@@ -157,10 +157,11 @@ fingerprint as printed. The last `grep` drops the session under analysis: its
 transcript is `<sid>.jsonl`, and its subagent transcripts and tool results sit
 under `<sid>/`. Then read each remaining hit. Not a recurrence: a session that
 only discussed the string, the session running this retro, a tool result that
-only repeats a probe for the string, such as `--pattern` output, which echoes
-its pattern, and an earlier run of this search, which matches through its own
-command rather than a tool result. Count a hit only where the string sits in a
-tool result of another session that produced it.
+shows a file or text quoting the string (a diff, a PR body, this page), a tool
+result that only repeats a probe for the string, such as `--pattern` output,
+which echoes its pattern, and an earlier run of this search, which matches
+through its own command rather than a tool result. Count a hit only where the
+string sits in a tool result of another session that produced it.
 
 `--recurring-failures` does not replace that search. It does not search for a
 fingerprint you supply, counts only calls whose result is flagged as an error
