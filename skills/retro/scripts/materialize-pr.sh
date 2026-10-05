@@ -19,9 +19,10 @@
 #       prints the worktree path. The default branch falls back to main when
 #       origin/HEAD is not set.
 #   materialize-pr.sh finish <worktree-dir> <title> <body-file> <file>...
-#       Refuses first when the body file lacks the provenance line of the PR
-#       body template (patch-workflow.md) - a mere mention of the repo, such
-#       as an issue link, does not count - or when a named evals.json adds or
+#       Refuses first when the first non-empty line under `## Came from` is
+#       not the provenance line of the PR body template (patch-workflow.md) -
+#       the line elsewhere, or an issue link to the repo, does not count - or
+#       when a named evals.json adds or
 #       tightens an eval that
 #       carries no `samples` (check-eval-samples.py). Then stages and commits
 #       ONLY the named files (never -A; other staged changes stay out of the
@@ -59,9 +60,11 @@ finish)
     [[ $# -ge 1 ]] || die "name at least one file to stage (never -A)"
     [[ -f "$body" ]] || die "body file not found: $body"
     # A maintainer of the target repo cannot tell what `/retro` is; the PR
-    # has to name the tool that opened it.
-    grep -qF 'Opened by a [netresearch/retro-skill](https://github.com/netresearch/retro-skill)' "$body" \
-        || die "body file lacks the provenance line naming netresearch/retro-skill (patch-workflow.md, PR body template)"
+    # has to name the tool that opened it. Only the first non-empty line under
+    # `## Came from` counts: the prefix elsewhere (a quoted example) does not.
+    provenance=$(awk '/^## Came from[[:space:]]*$/ {f = 1; next} f && NF {print; exit}' "$body")
+    [[ "$provenance" == 'Opened by a [netresearch/retro-skill](https://github.com/netresearch/retro-skill)'* ]] \
+        || die "body file lacks the provenance line naming netresearch/retro-skill as the first line under '## Came from' (patch-workflow.md, PR body template)"
     branch=$(git -C "$wt" rev-parse --abbrev-ref HEAD)
     # An eval retro adds or tightens must carry samples, or the fleet's eval
     # gate has nothing to grade it against (retro-skill#92). Runs before any

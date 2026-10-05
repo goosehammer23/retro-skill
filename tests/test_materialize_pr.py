@@ -20,7 +20,11 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "skills" / "retro" / "scripts" / "materialize-pr.sh"
 # The provenance line `finish` requires (patch-workflow.md, PR body template).
-BODY = "Opened by a [netresearch/retro-skill](https://github.com/netresearch/retro-skill) `/retro` run\n"
+PROVENANCE = (
+    "Opened by a [netresearch/retro-skill]"
+    "(https://github.com/netresearch/retro-skill) `/retro` run\n"
+)
+BODY = "## Summary\n\nx\n\n## Came from\n\n" + PROVENANCE
 
 FAKE_GPG = """\
 #!/bin/sh
@@ -208,12 +212,19 @@ class MaterializePrTest(unittest.TestCase):
             "see https://github.com/netresearch/retro-skill/issues/92\n",
             encoding="utf-8",
         )
+        # The line itself, but quoted in another section: `## Came from` opens
+        # with something else.
+        (self.tmp / "elsewhere.md").write_text(
+            "## Summary\n\n" + PROVENANCE + "\n## Came from\n\nFinding: B3\n",
+            encoding="utf-8",
+        )
         cases = [
             (("bogus",), 2, "usage"),
             (("finish", str(self.tmp), "t", "body.md"), 2, "never -A"),
             (("finish", str(self.tmp), "t", "missing.md", "a.txt"), 2, "body file"),
             (("finish", str(self.tmp), "t", "bare.md", "a.txt"), 2, "provenance"),
             (("finish", str(self.tmp), "t", "mention.md", "a.txt"), 2, "provenance"),
+            (("finish", str(self.tmp), "t", "elsewhere.md", "a.txt"), 2, "provenance"),
             (("start",), 1, "repo-dir"),
             (("start", str(self.tmp / "no-such-repo"), "feat/x"), 128, "fatal"),
         ]
