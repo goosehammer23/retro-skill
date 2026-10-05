@@ -182,6 +182,8 @@ class MaterializePrTest(unittest.TestCase):
         self.assertEqual(Path(body_arg).read_text(encoding="utf-8"), BODY)
         self.assertIn("--head", args)
         self.assertEqual(args[args.index("--head") + 1], "feat/x")
+        # Releasing it to reviewers is the user's step, not the script's.
+        self.assertIn("--draft", args)
         self.assertEqual(
             git("-C", str(self.remote), "log", "-1", "--format=%s", "feat/x"), "feat: a"
         )

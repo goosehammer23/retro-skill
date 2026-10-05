@@ -170,13 +170,17 @@ of these.
 
 GitHub:
 ```bash
-gh pr create --title "<title>" --body "<body>"
+gh pr create --draft --title "<title>" --body "<body>"
 ```
 
 GitLab (Netresearch internal):
 ```bash
-glab mr create --title "<title>" --description "<body>"
+glab mr create --draft --title "<title>" --description "<body>"
 ```
+
+Open every PR or MR as a draft. The user approved the change, not its release
+to reviewers; leaving draft summons maintainers and bot reviews, and that step
+is theirs. `materialize-pr.sh finish` opens drafts.
 
 `glab mr create` has no `--hostname` flag. The host comes from `GITLAB_HOST`
 (e.g. `git.netresearch.de`) or from `-R <host>/<group>/<repo>`.

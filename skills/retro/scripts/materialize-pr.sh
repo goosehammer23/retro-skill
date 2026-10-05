@@ -26,7 +26,7 @@
 #       `samples` (check-eval-samples.py). Then stages and commits
 #       ONLY the named files (never -A; other staged changes stay out of the
 #       commit), signed (-S --signoff, message = title), pushes -u, opens the PR for that branch (--head) with
-#       --body-file, prints the PR URL.
+#       --body-file as a draft (--draft), prints the PR URL.
 #
 # Exit: 0 ok; 2 unknown command, no file named, body file not found, body
 # without the provenance line or an eval refused; 1 a missing positional
@@ -81,7 +81,8 @@ finish)
     # and its gh-merge-base (the PR's base) from the caller's checkout.
     repo_slug=$(git -C "$wt" remote get-url origin | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')
     body=$(cd "$(dirname "$body")" && pwd)/$(basename "$body")
-    (cd "$wt" && gh pr create --title "$title" --body-file "$body" --head "$branch" --repo "$repo_slug")
+    # A draft: leaving draft summons reviewers, and that is the user's call.
+    (cd "$wt" && gh pr create --draft --title "$title" --body-file "$body" --head "$branch" --repo "$repo_slug")
     ;;
 *)
     die "usage: materialize-pr.sh start <repo-dir> <branch> | finish <worktree-dir> <title> <body-file> <file>..."
