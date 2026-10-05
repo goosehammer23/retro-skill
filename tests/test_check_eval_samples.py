@@ -267,7 +267,9 @@ class CheckEvalSamplesTest(unittest.TestCase):
         body = repo / "body.md"
         # Carries the provenance line, or finish refuses before the eval check.
         body.write_text(
-            "Opened by a netresearch/retro-skill `/retro` run\n", encoding="utf-8"
+            "Opened by a [netresearch/retro-skill]"
+            "(https://github.com/netresearch/retro-skill) `/retro` run\n",
+            encoding="utf-8",
         )
         return subprocess.run(
             [

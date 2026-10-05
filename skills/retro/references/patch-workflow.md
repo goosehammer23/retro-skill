@@ -214,7 +214,9 @@ retro run opens carries it: `skill-update`, `harness-artefact`, `new-skill`,
 `canonical-source`, on GitHub and GitLab alike. A maintainer of the target repo
 does not know what `/retro` is; the line names the tool that caused the change
 and links where it is documented. `materialize-pr.sh finish` refuses a body
-file without `netresearch/retro-skill`. It is not the AI-disclosure footer —
+file without the line's linked prefix (`Opened by a
+[netresearch/retro-skill](https://github.com/netresearch/retro-skill)`); an
+issue link to the repo does not count. It is not the AI-disclosure footer —
 that one follows the user's rules and stays a separate line. Where the target
 repo bans tool or agent mentions, its rule wins: drop the line, open that PR
 without the script, and say so in the Phase-10 report.

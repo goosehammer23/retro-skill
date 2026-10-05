@@ -19,17 +19,19 @@
 #       prints the worktree path. The default branch falls back to main when
 #       origin/HEAD is not set.
 #   materialize-pr.sh finish <worktree-dir> <title> <body-file> <file>...
-#       Refuses first when the body file does not name netresearch/retro-skill
-#       (the provenance line of the PR body template, patch-workflow.md), or
-#       when a named evals.json adds or tightens an eval that
+#       Refuses first when the body file lacks the provenance line of the PR
+#       body template (patch-workflow.md) - a mere mention of the repo, such
+#       as an issue link, does not count - or when a named evals.json adds or
+#       tightens an eval that
 #       carries no `samples` (check-eval-samples.py). Then stages and commits
 #       ONLY the named files (never -A; other staged changes stay out of the
 #       commit), signed (-S --signoff, message = title), pushes -u, opens the PR for that branch (--head) with
 #       --body-file, prints the PR URL.
 #
 # Exit: 0 ok; 2 unknown command, no file named, body file not found, body
-# without the provenance line or an eval refused; 1 a missing positional argument; a failing git or gh command
-# ends the script with that command's status. Never force-pushes, never merges.
+# without the provenance line or an eval refused; 1 a missing positional
+# argument; a failing git or gh command ends the script with that command's
+# status. Never force-pushes, never merges.
 set -euo pipefail
 
 die() { printf 'materialize-pr: %s\n' "$1" >&2; exit 2; }
@@ -58,7 +60,7 @@ finish)
     [[ -f "$body" ]] || die "body file not found: $body"
     # A maintainer of the target repo cannot tell what `/retro` is; the PR
     # has to name the tool that opened it.
-    grep -qF 'netresearch/retro-skill' "$body" \
+    grep -qF 'Opened by a [netresearch/retro-skill](https://github.com/netresearch/retro-skill)' "$body" \
         || die "body file lacks the provenance line naming netresearch/retro-skill (patch-workflow.md, PR body template)"
     branch=$(git -C "$wt" rev-parse --abbrev-ref HEAD)
     # An eval retro adds or tightens must carry samples, or the fleet's eval
