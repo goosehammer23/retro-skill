@@ -217,8 +217,9 @@ and links where it is documented. `materialize-pr.sh finish` refuses a body
 file whose first non-empty line under `## Came from` does not start with the
 linked prefix (`Opened by a
 [netresearch/retro-skill](https://github.com/netresearch/retro-skill)`); the
-prefix anywhere else, or an issue link to the repo, does not count. It is not the AI-disclosure footer —
-that one follows the user's rules and stays a separate line. Where the target
+prefix anywhere else, or an issue link to the repo, does not count. It is not
+the AI-disclosure footer — that one follows the user's rules and stays a
+separate line. Where the target
 repo bans tool or agent mentions, its rule wins: drop the line, open that PR
 without the script, and say so in the Phase-10 report.
 

@@ -22,9 +22,8 @@
 #       Refuses first when the first non-empty line under `## Came from` is
 #       not the provenance line of the PR body template (patch-workflow.md) -
 #       the line elsewhere, or an issue link to the repo, does not count - or
-#       when a named evals.json adds or
-#       tightens an eval that
-#       carries no `samples` (check-eval-samples.py). Then stages and commits
+#       when a named evals.json adds or tightens an eval that carries no
+#       `samples` (check-eval-samples.py). Then stages and commits
 #       ONLY the named files (never -A; other staged changes stay out of the
 #       commit), signed (-S --signoff, message = title), pushes -u, opens the PR for that branch (--head) with
 #       --body-file, prints the PR URL.
