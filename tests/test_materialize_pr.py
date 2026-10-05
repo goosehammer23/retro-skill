@@ -203,6 +203,17 @@ class MaterializePrTest(unittest.TestCase):
         ).split()
         self.assertEqual(files, ["a.txt"])
 
+    def test_finish_accepts_a_body_with_crlf_line_ends(self):
+        """A body written on Windows: its blank line reads as `\\r` to awk."""
+        project = self._bare_project(origin_head=True)
+        started = self._run("start", str(project), "feat/z")
+        self.assertEqual(started.returncode, 0, started.stderr)
+        worktree = Path(started.stdout.strip())
+        (worktree / "a.txt").write_text("a\n", encoding="utf-8")
+        (self.tmp / "body.md").write_bytes(BODY.replace("\n", "\r\n").encode())
+        result = self._run("finish", str(worktree), "feat: a", "body.md", "a.txt")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_exit_statuses_match_the_header(self):
         """The header's Exit line: 2 for refusals, 1 for a missing argument,
         git's own status for a failing git command - never 0."""

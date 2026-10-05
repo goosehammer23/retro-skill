@@ -62,7 +62,9 @@ finish)
     # A maintainer of the target repo cannot tell what `/retro` is; the PR
     # has to name the tool that opened it. Only the first non-empty line under
     # `## Came from` counts: the prefix elsewhere (a quoted example) does not.
-    provenance=$(awk '/^## Came from[[:space:]]*$/ {f = 1; next} f && NF {print; exit}' "$body")
+    # CR is stripped first: awk counts a lone `\r` as a field, so a body
+    # written with CRLF line ends would read its blank line as the first one.
+    provenance=$(awk '{sub(/\r$/, "")} /^## Came from[[:space:]]*$/ {f = 1; next} f && NF {print; exit}' "$body")
     [[ "$provenance" == 'Opened by a [netresearch/retro-skill](https://github.com/netresearch/retro-skill)'* ]] \
         || die "body file lacks the provenance line naming netresearch/retro-skill as the first line under '## Came from' (patch-workflow.md, PR body template)"
     branch=$(git -C "$wt" rev-parse --abbrev-ref HEAD)
