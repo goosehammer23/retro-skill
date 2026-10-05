@@ -62,7 +62,7 @@ same form as above. Do not create `<project>/CLAUDE.md` or
 
 Branch: `feat/retro-<slug>`
 Commit: Conventional Commits format; no harness-invented attribution, and the disclosure trailer the user's rules prescribe
-PR body: references the friction, describes the change, includes "Came from /retro: yes"
+PR body: references the friction, describes the change, opens `## Came from` with the provenance line naming netresearch/retro-skill (template in `references/patch-workflow.md`)
 
 See `references/patch-workflow.md` for full workflow including worktree-vs-clone selection, signing, and per-private-repo confirmation.
 

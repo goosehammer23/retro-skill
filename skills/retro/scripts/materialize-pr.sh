@@ -19,15 +19,19 @@
 #       prints the worktree path. The default branch falls back to main when
 #       origin/HEAD is not set.
 #   materialize-pr.sh finish <worktree-dir> <title> <body-file> <file>...
-#       Refuses first when a named evals.json adds or tightens an eval that
-#       carries no `samples` (check-eval-samples.py). Then stages and commits
+#       Refuses first when the first non-empty line under `## Came from` is
+#       not the provenance line of the PR body template (patch-workflow.md) -
+#       the line elsewhere, or an issue link to the repo, does not count - or
+#       when a named evals.json adds or tightens an eval that carries no
+#       `samples` (check-eval-samples.py). Then stages and commits
 #       ONLY the named files (never -A; other staged changes stay out of the
 #       commit), signed (-S --signoff, message = title), pushes -u, opens the PR for that branch (--head) with
 #       --body-file, prints the PR URL.
 #
-# Exit: 0 ok; 2 unknown command, no file named, body file not found or an
-# eval refused; 1 a missing positional argument; a failing git or gh command
-# ends the script with that command's status. Never force-pushes, never merges.
+# Exit: 0 ok; 2 unknown command, no file named, body file not found, body
+# without the provenance line or an eval refused; 1 a missing positional
+# argument; a failing git or gh command ends the script with that command's
+# status. Never force-pushes, never merges.
 set -euo pipefail
 
 die() { printf 'materialize-pr: %s\n' "$1" >&2; exit 2; }
@@ -54,6 +58,14 @@ finish)
     wt="${1:?worktree-dir}"; title="${2:?title}"; body="${3:?body-file}"; shift 3
     [[ $# -ge 1 ]] || die "name at least one file to stage (never -A)"
     [[ -f "$body" ]] || die "body file not found: $body"
+    # A maintainer of the target repo cannot tell what `/retro` is; the PR
+    # has to name the tool that opened it. Only the first non-empty line under
+    # `## Came from` counts: the prefix elsewhere (a quoted example) does not.
+    # CR is stripped first: awk counts a lone `\r` as a field, so a body
+    # written with CRLF line ends would read its blank line as the first one.
+    provenance=$(awk '{sub(/\r$/, "")} /^## Came from[[:space:]]*$/ {f = 1; next} f && NF {print; exit}' "$body")
+    [[ "$provenance" == 'Opened by a [netresearch/retro-skill](https://github.com/netresearch/retro-skill)'* ]] \
+        || die "body file lacks the provenance line naming netresearch/retro-skill as the first line under '## Came from' (patch-workflow.md, PR body template)"
     branch=$(git -C "$wt" rev-parse --abbrev-ref HEAD)
     # An eval retro adds or tightens must carry samples, or the fleet's eval
     # gate has nothing to grade it against (retro-skill#92). Runs before any
