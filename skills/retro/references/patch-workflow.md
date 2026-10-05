@@ -190,7 +190,7 @@ glab mr create --title "<title>" --description "<body>"
 
 ## Came from
 
-`/retro` session on <date>: <session-id>
+Opened by a [netresearch/retro-skill](https://github.com/netresearch/retro-skill) `/retro` run on <date>, session <session-id>
 Finding: <friction signal id> — <one-line description>
 Learning-Id: <retro-YYYYMMDD-slug>
 
@@ -208,6 +208,16 @@ Learning-Id: <retro-YYYYMMDD-slug>
 - [ ] <verification step>
 - [ ] <verification step>
 ```
+
+The first line of `## Came from` is the provenance line, and every PR or MR a
+retro run opens carries it: `skill-update`, `harness-artefact`, `new-skill`,
+`canonical-source`, on GitHub and GitLab alike. A maintainer of the target repo
+does not know what `/retro` is; the line names the tool that caused the change
+and links where it is documented. `materialize-pr.sh finish` refuses a body
+file without `netresearch/retro-skill`. It is not the AI-disclosure footer —
+that one follows the user's rules and stays a separate line. Where the target
+repo bans tool or agent mentions, its rule wins: drop the line, open that PR
+without the script, and say so in the Phase-10 report.
 
 The Symptom/Cause/Required behavior/Verification fields follow the canonical
 failure-pattern schema defined in `skill-repo-skill`'s

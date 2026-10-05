@@ -19,6 +19,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "skills" / "retro" / "scripts" / "materialize-pr.sh"
+# The provenance line `finish` requires (patch-workflow.md, PR body template).
+BODY = "Opened by a [netresearch/retro-skill](https://github.com/netresearch/retro-skill) `/retro` run\n"
 
 FAKE_GPG = """\
 #!/bin/sh
@@ -163,7 +165,7 @@ class MaterializePrTest(unittest.TestCase):
         worktree = Path(started.stdout.strip())
         self.assertTrue(worktree.is_absolute(), worktree)
         (worktree / "a.txt").write_text("a\n", encoding="utf-8")
-        (self.tmp / "body.md").write_text("body\n", encoding="utf-8")
+        (self.tmp / "body.md").write_text(BODY, encoding="utf-8")
         # Relative to the caller's cwd; gh runs in the worktree, so the script
         # must hand it an absolute path.
         result = self._run("finish", str(worktree), "feat: a", "body.md", "a.txt")
@@ -173,7 +175,7 @@ class MaterializePrTest(unittest.TestCase):
         self.assertIn(f"cwd={worktree}", log)
         args = [line[4:] for line in log if line.startswith("arg=")]
         body_arg = args[args.index("--body-file") + 1]
-        self.assertEqual(Path(body_arg).read_text(encoding="utf-8"), "body\n")
+        self.assertEqual(Path(body_arg).read_text(encoding="utf-8"), BODY)
         self.assertIn("--head", args)
         self.assertEqual(args[args.index("--head") + 1], "feat/x")
         self.assertEqual(
@@ -189,7 +191,7 @@ class MaterializePrTest(unittest.TestCase):
         (worktree / "a.txt").write_text("a\n", encoding="utf-8")
         (worktree / "unrelated.txt").write_text("secret\n", encoding="utf-8")
         git("-C", str(worktree), "add", "unrelated.txt")
-        (self.tmp / "body.md").write_text("body\n", encoding="utf-8")
+        (self.tmp / "body.md").write_text(BODY, encoding="utf-8")
         result = self._run("finish", str(worktree), "feat: a", "body.md", "a.txt")
         self.assertEqual(result.returncode, 0, result.stderr)
         files = git(
@@ -200,10 +202,12 @@ class MaterializePrTest(unittest.TestCase):
     def test_exit_statuses_match_the_header(self):
         """The header's Exit line: 2 for refusals, 1 for a missing argument,
         git's own status for a failing git command - never 0."""
+        (self.tmp / "bare.md").write_text("body without the line\n", encoding="utf-8")
         cases = [
             (("bogus",), 2, "usage"),
             (("finish", str(self.tmp), "t", "body.md"), 2, "never -A"),
             (("finish", str(self.tmp), "t", "missing.md", "a.txt"), 2, "body file"),
+            (("finish", str(self.tmp), "t", "bare.md", "a.txt"), 2, "provenance"),
             (("start",), 1, "repo-dir"),
             (("start", str(self.tmp / "no-such-repo"), "feat/x"), 128, "fatal"),
         ]
