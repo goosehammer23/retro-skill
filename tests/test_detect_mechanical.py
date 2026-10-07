@@ -917,6 +917,12 @@ class TestSchichtA(unittest.TestCase):
         evs = [user_msg("<command-name>/clear</command-name>"), user_msg("next")]
         self.assert_not_signal(evs, "A10")
 
+    def test_A10_effort_is_a_builtin_slash_command(self):
+        # The client answers /effort itself (`<local-command-stdout>Set effort level …`),
+        # so no Skill call can follow it; flagging it is a false positive.
+        evs = [user_msg("<command-name>/effort</command-name>"), user_msg("next")]
+        self.assert_not_signal(evs, "A10")
+
     def test_A10_inline_expanded_skill_does_not_fire(self):
         body = "<command-name>/pr-finish</command-name>\n# /pr-finish\n" + ("x" * 1600)
         evs = [user_msg(body), user_msg("next")]
