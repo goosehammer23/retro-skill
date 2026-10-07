@@ -2534,6 +2534,61 @@ class CollectorMaskingTest(unittest.TestCase):
         entry = crf._unread({"url": "u"}, "read_failed", f"RuntimeError: {self.TOKEN}")
         self.assertNotIn(self.TOKEN, entry["error"])
 
+    def test_the_agents_last_reply_in_a_thread_is_masked(self):
+        thread = {
+            "path": "a.py",
+            "line": 3,
+            "isResolved": True,
+            "comments": {
+                "totalCount": 2,
+                "nodes": [
+                    {
+                        "author": {"login": "coderabbitai", "__typename": "Bot"},
+                        "createdAt": "2026-09-20T10:00:00Z",
+                        "body": "fix this",
+                        "url": "u1",
+                    },
+                    {
+                        "author": {"login": "me", "__typename": "User"},
+                        "createdAt": "2026-09-20T10:05:00Z",
+                        "body": f"done, rotated {self.TOKEN}",
+                        "url": "u2",
+                    },
+                ],
+            },
+        }
+        empty = {"totalCount": 0, "nodes": []}
+        raw = {
+            "data": {
+                "viewer": {"login": "me"},
+                "repository": {
+                    "pullRequest": {
+                        "url": "https://github.com/o/r/pull/1",
+                        "title": "t",
+                        "headRefName": "b",
+                        "reviewThreads": {"totalCount": 1, "nodes": [thread]},
+                        "reviews": empty,
+                        "comments": empty,
+                        "commits": empty,
+                        "closingIssuesReferences": empty,
+                    }
+                },
+            }
+        }
+        parsed = crf.parse_github_pr(raw, {"me"})
+        self.assertNotIn(self.TOKEN, json.dumps(parsed))
+        self.assertIn("[REDACTED]", parsed["findings"][0]["last_self_reply"])
+
+    def test_supplied_feedback_text_is_masked(self):
+        raw = _fixture("normalized-feedback.json")
+        raw["artefacts"][0]["title"] = f"Rotate {self.TOKEN}"
+        raw["artefacts"][0]["findings"][0]["body"] = f"the old key was {self.TOKEN}"
+        feedback = crf.contract.parse_document(raw)
+        url = next(iter(feedback["artefacts"]))
+        result = crf.collect([crf.parse_ref(url)], None, external=feedback)
+        self.assertNotIn(self.TOKEN, json.dumps(result))
+        self.assertIn("[REDACTED]", result["artefacts"][0]["title"])
+
     def test_title_is_masked(self):
         raw = _fixture("gitlab-mr.json")
         raw["item"]["title"] = f"OPS-901: rotate {self.TOKEN}"

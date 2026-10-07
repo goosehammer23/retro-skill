@@ -34,7 +34,8 @@ token to whatever host it is given. A token in `GITLAB_TOKEN`,
 `GITLAB_ACCESS_TOKEN` or `OAUTH_TOKEN` reaches glab only on calls to the host
 `$GITLAB_HOST` (or `$GITLAB_URI`, `$GL_HOST`) names (and `CI_JOB_TOKEN` only on calls to `$CI_SERVER_FQDN`);
 for any other host glab runs without them and uses the credentials it stores
-for that host. Comment bodies and error lines pass through `mask-secrets.py`.
+for that host. Comment bodies, titles, the agent's last reply in a thread and
+error lines pass through `mask-secrets.py`, supplied feedback included.
 
 Every finding carries `source`, `author_class` (`self` · `bot` · `human`),
 `resolved` where the forge says so, and `commit_after`: the first commit on
@@ -121,6 +122,25 @@ _masking = _load_masking()
 
 def _mask_opt(text: str | None) -> str | None:
     return None if text is None else _masking.mask(text)
+
+
+# Free text a run prints. collect() masks these keys once more on the way
+# out, so text that came in by a path without masking (a --feedback-file is
+# used as it stands) is covered too.
+TEXT_KEYS = frozenset({"body", "title", "last_self_reply", "error"})
+
+
+def _masked_text(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            k: _masking.mask(v)
+            if k in TEXT_KEYS and isinstance(v, str)
+            else _masked_text(v)
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_masked_text(v) for v in value]
+    return value
 
 
 # Logins that are bots although GraphQL reports them as users, and GitLab
@@ -443,7 +463,7 @@ def _thread(url, entries, meta, commits, out: _Collected, sources) -> None:
     common = {
         **meta,
         "replies": len(replies),
-        "last_self_reply": own[-1][3] if own else None,
+        "last_self_reply": _masking.mask(own[-1][3]) if own else None,
         "last_activity": last.isoformat() if last else None,
     }
     if klass == "self":
@@ -1145,8 +1165,8 @@ def collect(
 
     return {
         "since": since.isoformat() if since else None,
-        "artefacts": artefacts,
-        "findings": findings,
+        "artefacts": _masked_text(artefacts),
+        "findings": _masked_text(findings),
         "findings_before_since": earlier,
         "complete": all(_read_whole(a) for a in artefacts),
     }
