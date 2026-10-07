@@ -110,7 +110,10 @@ CURL_USER_OPTION = re.compile(
 SECRET_ASSIGNMENT = re.compile(
     r"(?P<keep>(?<![A-Za-z0-9_])[A-Za-z0-9_]*?"
     r"(?i:password|passwd|secret|token|api_?key|access_key|private_key)"
-    r"\s*=(?!=)\s*[\"']?)(?![\"']?\$)(?!\[REDACTED\])[^\s'\"]+"
+    r"\s*=(?!=)\s*[\"']?)(?!\$)(?!\[REDACTED\])"
+    # A quoted value runs to its closing quote, spaces included; an unquoted
+    # one, or a quoted one cut before its closing quote, to the next space.
+    r"(?:(?<=')[^'\n]+(?=')|(?<=\")[^\"\n]+(?=\")|[^\s'\"]+)"
 )
 
 

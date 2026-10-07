@@ -137,6 +137,13 @@ class SecretAssignmentTest(unittest.TestCase):
                 self.assertIn(ms.MARKER, out)
                 self.assertNotIn(secret, ms.squeeze(text, 1000))
 
+    def test_quoted_value_is_masked_to_its_closing_quote(self):
+        self.assertEqual(
+            ms.mask("DB_PASSWORD='correct horse battery' ./run"),
+            "DB_PASSWORD='[REDACTED]' ./run",
+        )
+        self.assertEqual(ms.mask('X_TOKEN="p q r" y'), 'X_TOKEN="[REDACTED]" y')
+
     def test_name_stays_readable(self):
         self.assertEqual(
             ms.mask("export API_TOKEN=abc123 && x"), "export API_TOKEN=[REDACTED] && x"
