@@ -408,8 +408,9 @@ def cmd_scan(args) -> int:
     return 0
 
 
-# A finding's own file paths, which `drain` takes back; they are printed as
-# they are, like `slugs_scanned[].path`. Only a finding's top-level fields
+# A finding's own file paths are printed as they are, like
+# `slugs_scanned[].path`: `drain` takes `source_path` back, and both name a
+# file the reader has to find. Only a finding's top-level fields
 # qualify: a key of the same name inside a note's frontmatter is note text.
 PATH_FIELDS = frozenset({"source_path", "index_path"})
 
