@@ -420,6 +420,24 @@ class DrainTest(unittest.TestCase):
         self.assertEqual(survivors, ["CONCURRENT", "NEW LIVE CONTENT"])
         self.assertEqual([p for p in promoted.iterdir() if p.is_dir()], [])
 
+    def test_without_hard_links_an_existing_tombstone_is_kept(self):
+        promoted = self.memory / ".promoted"
+        promoted.mkdir()
+        (promoted / "feedback_x.md").write_text("OLD TOMBSTONE", encoding="utf-8")
+        path = _write(self.memory, "feedback_x.md", "NEW LIVE CONTENT")
+        unsupported = OSError(1, "Operation not permitted")
+        # `exists()` answering False stands for the name being taken between a
+        # check and the move; only an exclusive create notices that.
+        with (
+            mock.patch.object(smi.os, "link", side_effect=unsupported),
+            mock.patch.object(smi.Path, "exists", return_value=False),
+        ):
+            res = _run_drain(path, self.root)
+        self.assertEqual(res["rc"], 0)
+        survivors = sorted(p.read_text(encoding="utf-8") for p in promoted.glob("*.md"))
+        self.assertEqual(survivors, ["NEW LIVE CONTENT", "OLD TOMBSTONE"])
+        self.assertFalse(path.exists())
+
     def test_index_is_replaced_whole(self):
         """A reader holding MEMORY.md open keeps the complete old index."""
         path = _write(self.memory, "feedback_x.md", FEEDBACK)

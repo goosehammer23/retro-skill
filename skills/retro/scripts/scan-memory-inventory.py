@@ -512,7 +512,8 @@ def _place(path: Path, names) -> Path | None:
     """Move `path` to the first of `names` that does not exist yet.
 
     A hard link fails when its target exists, so a file another process put
-    there in the meantime is never replaced. Returns None when every name is
+    there in the meantime is never replaced; where hard links are not
+    supported, the name is claimed with an exclusive create first. Returns None when every name is
     taken (only a finite list can run out)."""
     for name in names:
         try:
@@ -520,10 +521,13 @@ def _place(path: Path, names) -> Path | None:
         except FileExistsError:
             continue
         except OSError:
-            # A file system without hard links: check, then rename.
-            if name.exists():
+            # A file system without hard links: claim the name by creating it
+            # exclusively, then move the file over the placeholder.
+            try:
+                os.close(os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
+            except FileExistsError:
                 continue
-            os.rename(path, name)
+            os.replace(path, name)
             return name
         os.unlink(path)
         return name
