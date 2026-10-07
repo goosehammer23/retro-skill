@@ -500,6 +500,22 @@ class ScanMaskingTest(unittest.TestCase):
         self.assertNotIn(token, res["raw"])
         self.assertEqual(res["json"]["findings"][0]["title"], {"[REDACTED]": "x"})
 
+    def test_keys_that_mask_alike_are_all_kept(self):
+        root, memory = _make_root()
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        first, second = "glpat-" + "a1" * 12, "glpat-" + "b2" * 12
+        _write(
+            memory,
+            "feedback_keys.md",
+            f"---\nname:\n  {first}: one\n  {second}: two\n---\nbody\n",
+        )
+        res = _run_scan(memory_root=root)
+        self.assertNotIn(first, res["raw"])
+        self.assertEqual(
+            res["json"]["findings"][0]["title"],
+            {"[REDACTED]": "one", "[REDACTED] (2)": "two"},
+        )
+
 
 class GlobalRulesMaskingTest(unittest.TestCase):
     def test_a_token_at_the_cut_is_masked_whole(self):

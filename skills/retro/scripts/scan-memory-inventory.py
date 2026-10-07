@@ -413,7 +413,16 @@ def _masked(value: Any) -> Any:
     if isinstance(value, str):
         return _masking.mask(value)
     if isinstance(value, dict):
-        return {_masked(key): _masked(item) for key, item in value.items()}
+        masked: dict[Any, Any] = {}
+        for key, item in value.items():
+            name = _masked(key)
+            # Two keys can mask to the same text; number the later ones so
+            # no entry is dropped.
+            unique, n = name, 2
+            while unique in masked:
+                unique, n = f"{name} ({n})", n + 1
+            masked[unique] = _masked(item)
+        return masked
     if isinstance(value, list):
         return [_masked(item) for item in value]
     return value
