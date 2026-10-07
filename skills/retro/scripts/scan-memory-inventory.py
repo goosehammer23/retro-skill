@@ -382,7 +382,7 @@ def cmd_scan(args) -> int:
     if getattr(args, "include_global_rules", False):
         findings.extend(_global_rules_findings(args.global_rules_file))
 
-    findings = [_masked(f) for f in findings]
+    findings = [_masked_finding(f) for f in findings]
 
     if not findings and not any(s["present"] for s in slugs_scanned):
         envelope: dict[str, Any] = {
@@ -408,21 +408,26 @@ def cmd_scan(args) -> int:
     return 0
 
 
+# A finding's own file paths, which `drain` takes back; they are printed as
+# they are, like `slugs_scanned[].path`. Only a finding's top-level fields
+# qualify: a key of the same name inside a note's frontmatter is note text.
 PATH_FIELDS = frozenset({"source_path", "index_path"})
 
 
+def _masked_finding(finding: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: item if key in PATH_FIELDS else _masked(item)
+        for key, item in finding.items()
+    }
+
+
 def _masked(value: Any) -> Any:
-    """Mask every string in a finding: all of its text comes from a note."""
+    """Mask every string in a value: all of its text comes from a note."""
     if isinstance(value, str):
         return _masking.mask(value)
     if isinstance(value, dict):
         masked: dict[Any, Any] = {}
         for key, item in value.items():
-            if key in PATH_FIELDS:
-                # A file path is what `drain` takes back; it is shown as it is,
-                # like `slugs_scanned[].path`.
-                masked[key] = item
-                continue
             name = _masked(key)
             # Two keys can mask to the same text; number the later ones so
             # no entry is dropped.
@@ -558,7 +563,8 @@ def _rewrite_index(index_path: Path, name: str) -> None:
     The new index is written to a temporary file beside it and renamed over it,
     so a reader sees the old or the new index, never a partial one. If the
     index changed while it was being rewritten, the rewrite starts again from
-    the new text."""
+    the new text. A write that lands between the last check and the rename is
+    still lost; there is no lock against a concurrent writer."""
     for _attempt in range(5):
         before = index_path.read_bytes()
         kept = []

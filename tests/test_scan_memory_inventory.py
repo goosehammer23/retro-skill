@@ -505,8 +505,24 @@ class ScanMaskingTest(unittest.TestCase):
         root, memory = _make_root("-home-u-projects-xoxb-slack-bot-integration")
         self.addCleanup(shutil.rmtree, root, ignore_errors=True)
         path = _write(memory, "feedback_a.md", FEEDBACK)
+        index = _write(memory, "MEMORY.md", "- [a](feedback_a.md) — a\n")
         res = _run_scan(memory_root=root)
-        self.assertEqual(res["json"]["findings"][0]["source_path"], str(path))
+        finding = res["json"]["findings"][0]
+        self.assertEqual(finding["source_path"], str(path))
+        self.assertEqual(finding["index_path"], str(index))
+
+    def test_path_named_keys_in_frontmatter_are_masked(self):
+        """Only a finding's own path fields are exempt, not note text."""
+        root, memory = _make_root()
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        token = "glpat-" + "p9" * 12
+        _write(
+            memory,
+            "feedback_p.md",
+            f"---\nname:\n  source_path: {token}\n  index_path: {token}\n---\nbody\n",
+        )
+        res = _run_scan(memory_root=root)
+        self.assertNotIn(token, res["raw"])
 
     def test_keys_that_mask_alike_are_all_kept(self):
         root, memory = _make_root()
