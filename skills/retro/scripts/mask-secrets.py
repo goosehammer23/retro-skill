@@ -100,16 +100,17 @@ CURL_USER_OPTION = re.compile(
 )
 
 
-# `PASSWORD=…`, `export API_TOKEN=…`, `--db-password=…`: a value assigned to a
-# name ending in a secret word. A pass of its own, after the alternatives, for
+# `PASSWORD=…`, `export API_TOKEN=…`, `PGPASSWORD=…`, `--db-password=…`: a
+# value assigned to a name ending in a secret word. `==` and `===` are
+# comparisons, not assignments. A pass of its own, after the alternatives, for
 # the same reason as the curl pass: as an alternative it would start at the
 # name and take the match from the shape-specific alternative behind it
 # (`GH_TOKEN=ghp_…`). A value that is a variable (`$X`) or already masked
 # stays as it is; `PWD` is the working directory, not a password.
 SECRET_ASSIGNMENT = re.compile(
-    r"(?P<keep>(?<![A-Za-z0-9_])(?:[A-Za-z_][A-Za-z0-9_]*_)?"
+    r"(?P<keep>(?<![A-Za-z0-9_])[A-Za-z0-9_]*?"
     r"(?i:password|passwd|secret|token|api_?key|access_key|private_key)"
-    r"\s*=\s*[\"']?)(?![\"']?\$)(?!\[REDACTED\])[^\s'\"]+"
+    r"\s*=(?!=)\s*[\"']?)(?![\"']?\$)(?!\[REDACTED\])[^\s'\"]+"
 )
 
 

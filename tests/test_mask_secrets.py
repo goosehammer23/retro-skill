@@ -128,6 +128,8 @@ class SecretAssignmentTest(unittest.TestCase):
             ("mysqldump --password=" + "mp1" * 4, "mp1mp1"),
             ("client_secret=" + "cs7" * 5, "cs7cs7"),
             ("STRIPE_API_KEY=" + "sk9" * 5, "sk9sk9"),
+            ("export PGPASSWORD=" + "pg2" * 4, "pg2pg2"),
+            ("VAULTTOKEN=" + "vt6" * 4, "vt6vt6"),
         ):
             with self.subTest(text):
                 out = ms.mask(text)
@@ -147,6 +149,7 @@ class SecretAssignmentTest(unittest.TestCase):
             "PWD=/home/user/project",
             "max_tokens=4096 and tokens=12",
             "TOKEN_COUNT=3",
+            "if token === expected and password == other",
         ):
             with self.subTest(text):
                 self.assertEqual(ms.mask(text), text)
