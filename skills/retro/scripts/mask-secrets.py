@@ -113,7 +113,9 @@ SECRET_ASSIGNMENT = re.compile(
     r"\s*=(?!=)\s*[\"']?)(?!\$)(?!\[REDACTED\])"
     # A quoted value runs to its closing quote, spaces included; an unquoted
     # one, or a quoted one cut before its closing quote, to the next space.
-    r"(?:(?<=')[^'\n]+(?=')|(?<=\")[^\"\n]+(?=\")|[^\s'\"]+)"
+    # A quote followed by a space closes an argument rather than opening a
+    # value (`"token=" --flag "x"`).
+    r"(?:(?<=')(?!\s)[^'\n]+(?=')|(?<=\")(?!\s)[^\"\n]+(?=\")|[^\s'\"]+)"
 )
 
 

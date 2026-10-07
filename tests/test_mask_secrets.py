@@ -143,6 +143,10 @@ class SecretAssignmentTest(unittest.TestCase):
             "DB_PASSWORD='[REDACTED]' ./run",
         )
         self.assertEqual(ms.mask('X_TOKEN="p q r" y'), 'X_TOKEN="[REDACTED]" y')
+        self.assertEqual(
+            ms.mask('curl -d "token=" --data-urlencode "ref=main"'),
+            'curl -d "token=" --data-urlencode "ref=main"',
+        )
 
     def test_name_stays_readable(self):
         self.assertEqual(
