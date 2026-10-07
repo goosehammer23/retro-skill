@@ -2589,6 +2589,28 @@ class CollectorMaskingTest(unittest.TestCase):
         self.assertNotIn(self.TOKEN, json.dumps(result))
         self.assertIn("[REDACTED]", result["artefacts"][0]["title"])
 
+    def test_every_supplied_field_is_masked(self):
+        """A --feedback-file field is free text whatever its name."""
+        raw = _fixture("normalized-feedback.json")
+        artefact = raw["artefacts"][0]
+        artefact["state"] = f"state {self.TOKEN}"
+        artefact["references"] = [
+            {"ref": f"ref {self.TOKEN}", "context": f"context {self.TOKEN}"}
+        ]
+        # The agent's own comments are not reported; change someone else's.
+        finding = next(f for f in artefact["findings"] if f["author_class"] != "self")
+        for key in ("source", "author", "path", "commit_after"):
+            finding[key] = f"{key} {self.TOKEN}"
+        feedback = crf.contract.parse_document(raw)
+        url = next(iter(feedback["artefacts"]))
+        result = crf.collect([crf.parse_ref(url)], None, external=feedback)
+        self.assertNotIn(self.TOKEN, json.dumps(result))
+        (changed,) = [
+            f for f in result["findings"] if f["source"] == "source [REDACTED]"
+        ]
+        self.assertEqual(changed["path"], "path [REDACTED]")
+        self.assertEqual(result["artefacts"][0]["state"], "state [REDACTED]")
+
     def test_title_is_masked(self):
         raw = _fixture("gitlab-mr.json")
         raw["item"]["title"] = f"OPS-901: rotate {self.TOKEN}"

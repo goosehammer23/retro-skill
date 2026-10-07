@@ -124,20 +124,14 @@ def _mask_opt(text: str | None) -> str | None:
     return None if text is None else _masking.mask(text)
 
 
-# Free text a run prints. collect() masks these keys once more on the way
-# out, so text that came in by a path without masking (a --feedback-file is
-# used as it stands) is covered too.
-TEXT_KEYS = frozenset({"body", "title", "last_self_reply", "error"})
-
-
+# collect() masks every string it returns on the way out, so text that came
+# in by a path without masking is covered too: a --feedback-file is used as it
+# stands, and any of its fields (state, author, path, references) is free text.
 def _masked_text(value: Any) -> Any:
+    if isinstance(value, str):
+        return _masking.mask(value)
     if isinstance(value, dict):
-        return {
-            k: _masking.mask(v)
-            if k in TEXT_KEYS and isinstance(v, str)
-            else _masked_text(v)
-            for k, v in value.items()
-        }
+        return {k: _masked_text(v) for k, v in value.items()}
     if isinstance(value, list):
         return [_masked_text(v) for v in value]
     return value

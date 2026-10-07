@@ -473,6 +473,22 @@ class ScanMaskingTest(unittest.TestCase):
         self.assertIn("[REDACTED]", finding["description"])
         self.assertIn("[REDACTED]", finding["how_to_apply"])
 
+    def test_frontmatter_values_are_masked(self):
+        root, memory = _make_root()
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        token = "glpat-" + "s7" * 12
+        _write(
+            memory,
+            "feedback_token.md",
+            FEEDBACK.replace(
+                "originSessionId: 9d74b3aa-07df-4f72-aa2f-964c8670c122",
+                f"originSessionId: {token}",
+            ),
+        )
+        res = _run_scan(memory_root=root)
+        self.assertNotIn(token, res["raw"])
+        self.assertEqual(res["json"]["findings"][0]["origin_session_id"], "[REDACTED]")
+
 
 class GlobalRulesMaskingTest(unittest.TestCase):
     def test_a_token_at_the_cut_is_masked_whole(self):

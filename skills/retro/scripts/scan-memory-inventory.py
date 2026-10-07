@@ -64,9 +64,6 @@ def _load_masking():
 
 _masking = _load_masking()
 
-# Note text a finding quotes; credentials in it are masked before printing.
-TEXT_FIELDS = ("title", "description", "why", "how_to_apply", "section_title")
-
 DEFAULT_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 INDEX_FILE = "MEMORY.md"
 TOMBSTONE_DIR = ".promoted"
@@ -411,13 +408,15 @@ def cmd_scan(args) -> int:
     return 0
 
 
-def _masked(finding: dict[str, Any]) -> dict[str, Any]:
-    return {
-        key: _masking.mask(str(value))
-        if key in TEXT_FIELDS and value is not None
-        else value
-        for key, value in finding.items()
-    }
+def _masked(value: Any) -> Any:
+    """Mask every string in a finding: all of its text comes from a note."""
+    if isinstance(value, str):
+        return _masking.mask(value)
+    if isinstance(value, dict):
+        return {key: _masked(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_masked(item) for item in value]
+    return value
 
 
 def _print_text(envelope: dict[str, Any]) -> None:
