@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import io
 import json
@@ -15,6 +16,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -373,6 +375,85 @@ class DrainTest(unittest.TestCase):
         index = (self.memory / "MEMORY.md").read_text(encoding="utf-8")
         self.assertNotIn("feedback_x.md", index)
         self.assertIn("other.md", index)
+
+    def _on_first_move(self, action):
+        """Run `action` right before the drain's first rename or replace."""
+        real_rename, real_replace, fired = smi.os.rename, smi.os.replace, []
+
+        def wrap(real):
+            def move(src, dst):
+                if not fired:
+                    fired.append(True)
+                    action()
+                return real(src, dst)
+
+            return move
+
+        return mock.patch.multiple(
+            smi.os, rename=wrap(real_rename), replace=wrap(real_replace)
+        )
+
+    def test_source_rewritten_during_the_drain_is_not_tombstoned(self):
+        path = _write(self.memory, "feedback_x.md", FEEDBACK)
+        expected = hashlib.sha256(path.read_bytes()).hexdigest()
+        with self._on_first_move(
+            lambda: path.write_text("REWRITTEN", encoding="utf-8")
+        ):
+            res = _run_drain(path, self.root, expect_sha256=expected)
+        self.assertEqual(res["rc"], 2)
+        self.assertIn("changed since scan", res["stderr"])
+        self.assertEqual(path.read_text(encoding="utf-8"), "REWRITTEN")
+        self.assertEqual(list((self.memory / ".promoted").iterdir()), [])
+
+    def test_tombstone_created_during_the_drain_is_kept(self):
+        promoted = self.memory / ".promoted"
+        path = _write(self.memory, "feedback_x.md", "NEW LIVE CONTENT")
+
+        def concurrent():
+            promoted.mkdir(exist_ok=True)
+            (promoted / "feedback_x.md").write_text("CONCURRENT", encoding="utf-8")
+
+        with self._on_first_move(concurrent):
+            res = _run_drain(path, self.root)
+        self.assertEqual(res["rc"], 0)
+        survivors = sorted(p.read_text(encoding="utf-8") for p in promoted.glob("*.md"))
+        self.assertEqual(survivors, ["CONCURRENT", "NEW LIVE CONTENT"])
+        self.assertEqual([p for p in promoted.iterdir() if p.is_dir()], [])
+
+    def test_index_is_replaced_whole(self):
+        """A reader holding MEMORY.md open keeps the complete old index."""
+        path = _write(self.memory, "feedback_x.md", FEEDBACK)
+        old = "- [keep](other.md) — k\n- [x](feedback_x.md) — hook\n"
+        index = _write(self.memory, "MEMORY.md", old)
+        index.chmod(0o640)
+        with index.open(encoding="utf-8") as reader:
+            res = _run_drain(path, self.root)
+            self.assertEqual(reader.read(), old)
+        self.assertEqual(res["rc"], 0)
+        self.assertEqual(index.read_text(encoding="utf-8"), "- [keep](other.md) — k\n")
+        self.assertEqual(index.stat().st_mode & 0o777, 0o640)
+        self.assertEqual(
+            sorted(p.name for p in self.memory.iterdir()), [".promoted", "MEMORY.md"]
+        )
+
+
+class ScanMaskingTest(unittest.TestCase):
+    def test_note_text_is_masked(self):
+        root, memory = _make_root()
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        token = "glpat-" + "m4" * 12
+        _write(
+            memory,
+            "feedback_token.md",
+            FEEDBACK.replace("(8.008).", f"(8.008), token {token}.").replace(
+                "use the period separator.", f"export GITLAB_TOKEN={token}"
+            ),
+        )
+        res = _run_scan(memory_root=root)
+        finding = res["json"]["findings"][0]
+        self.assertNotIn(token, res["raw"])
+        self.assertIn("[REDACTED]", finding["description"])
+        self.assertIn("[REDACTED]", finding["how_to_apply"])
 
 
 class PruneIndexLineTest(unittest.TestCase):

@@ -43,12 +43,29 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import re
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
+
+
+def _load_masking():
+    """mask-secrets.py, loaded by path: its name is hyphenated like ours."""
+    path = Path(__file__).resolve().parent / "mask-secrets.py"
+    spec = importlib.util.spec_from_file_location("mask_secrets", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_masking = _load_masking()
+
+# Note text a finding quotes; credentials in it are masked before printing.
+TEXT_FIELDS = ("title", "description", "why", "how_to_apply", "section_title")
 
 DEFAULT_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 INDEX_FILE = "MEMORY.md"
@@ -366,6 +383,8 @@ def cmd_scan(args) -> int:
     if getattr(args, "include_global_rules", False):
         findings.extend(_global_rules_findings(args.global_rules_file))
 
+    findings = [_masked(f) for f in findings]
+
     if not findings and not any(s["present"] for s in slugs_scanned):
         envelope: dict[str, Any] = {
             "available": False,
@@ -388,6 +407,15 @@ def cmd_scan(args) -> int:
     else:
         print(json.dumps(envelope, indent=2, ensure_ascii=False))
     return 0
+
+
+def _masked(finding: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: _masking.mask(str(value))
+        if key in TEXT_FIELDS and value is not None
+        else value
+        for key, value in finding.items()
+    }
 
 
 def _print_text(envelope: dict[str, Any]) -> None:
@@ -470,6 +498,74 @@ def _prune_index_line(line: str, name: str) -> str | None:
     return marker + INDEX_SEPARATOR.join(segments) + eol
 
 
+def _tombstone_names(tombstone_dir: Path, source: Path, sha: str):
+    """The file's own name, then names disambiguated by content hash."""
+    yield tombstone_dir / source.name
+    yield tombstone_dir / f"{source.stem}.{sha[:12]}{source.suffix}"
+    n = 1
+    while True:
+        yield tombstone_dir / f"{source.stem}.{sha[:12]}.{n}{source.suffix}"
+        n += 1
+
+
+def _place(path: Path, names) -> Path | None:
+    """Move `path` to the first of `names` that does not exist yet.
+
+    A hard link fails when its target exists, so a file another process put
+    there in the meantime is never replaced. Returns None when every name is
+    taken (only a finite list can run out)."""
+    for name in names:
+        try:
+            os.link(path, name)
+        except FileExistsError:
+            continue
+        except OSError:
+            # A file system without hard links: check, then rename.
+            if name.exists():
+                continue
+            os.rename(path, name)
+            return name
+        os.unlink(path)
+        return name
+    return None
+
+
+def _rewrite_index(index_path: Path, name: str) -> None:
+    """Drop the entry for `name` from MEMORY.md and replace the file in one step.
+
+    The new index is written to a temporary file beside it and renamed over it,
+    so a reader sees the old or the new index, never a partial one. If the
+    index changed while it was being rewritten, the rewrite starts again from
+    the new text."""
+    for _attempt in range(5):
+        before = index_path.read_bytes()
+        kept = []
+        for line in before.decode("utf-8", errors="replace").splitlines(keepends=True):
+            if f"]({name})" not in line:
+                kept.append(line)
+                continue
+            pruned = _prune_index_line(line, name)
+            if pruned is not None:
+                kept.append(pruned)
+        fd, tmp = tempfile.mkstemp(prefix=f".{INDEX_FILE}.", dir=index_path.parent)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write("".join(kept))
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.chmod(tmp, index_path.stat().st_mode & 0o7777)
+            if index_path.read_bytes() != before:
+                continue
+            os.replace(tmp, index_path)
+            return
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+    raise RuntimeError(
+        f"{index_path} kept changing; the entry for {name} is still in it"
+    )
+
+
 def cmd_drain(args) -> int:
     path: Path = args.path
     try:
@@ -507,35 +603,40 @@ def cmd_drain(args) -> int:
     memory_dir = resolved.parent
     tombstone_dir = memory_dir / TOMBSTONE_DIR
     tombstone_dir.mkdir(exist_ok=True)
-    tombstone = tombstone_dir / resolved.name
-    # Never clobber an existing tombstone — disambiguate by content hash.
-    if tombstone.exists():
-        tombstone = (
-            tombstone_dir / f"{resolved.stem}.{source_sha[:12]}{resolved.suffix}"
+    # Take the file out of the store first, into a directory of its own, and
+    # judge the bytes that were taken: a check of the path followed by a move
+    # of the path could move something written in between.
+    staging = Path(tempfile.mkdtemp(prefix=".drain-", dir=tombstone_dir))
+    taken = staging / resolved.name
+    try:
+        os.rename(resolved, taken)
+    except OSError:
+        staging.rmdir()
+        print(f"drain refused: cannot move source {resolved}", file=sys.stderr)
+        return 2
+    taken_sha = hashlib.sha256(taken.read_bytes()).hexdigest()
+    if args.expect_sha256 and taken_sha != args.expect_sha256:
+        restored = _place(taken, [resolved])
+        if restored is not None:
+            staging.rmdir()
+        print(
+            "drain refused: source changed since scan "
+            f"(expected {args.expect_sha256[:12]}, found {taken_sha[:12]})"
+            + ("" if restored else f"; the file is kept at {taken}"),
+            file=sys.stderr,
         )
-        n = 1
-        while tombstone.exists():
-            tombstone = (
-                tombstone_dir
-                / f"{resolved.stem}.{source_sha[:12]}.{n}{resolved.suffix}"
-            )
-            n += 1
-    os.replace(resolved, tombstone)
+        return 2
+    tombstone = _place(taken, _tombstone_names(tombstone_dir, resolved, taken_sha))
+    staging.rmdir()
 
     index_path = memory_dir / INDEX_FILE
     index_pruned = False
     if index_path.is_file():
-        kept = []
-        for line in index_path.read_text(encoding="utf-8", errors="replace").splitlines(
-            keepends=True
-        ):
-            if f"]({resolved.name})" not in line:
-                kept.append(line)
-                continue
-            pruned = _prune_index_line(line, resolved.name)
-            if pruned is not None:
-                kept.append(pruned)
-        index_path.write_text("".join(kept), encoding="utf-8")
+        try:
+            _rewrite_index(index_path, resolved.name)
+        except RuntimeError as exc:
+            print(f"drain: tombstoned to {tombstone}, but {exc}", file=sys.stderr)
+            return 1
         index_pruned = True
 
     print(
