@@ -92,6 +92,19 @@ class FindInstalledSkillsTest(unittest.TestCase):
             skills["plain"]["repo_url"], "https://github.com/acme/plain-skill.git"
         )
 
+    def test_an_at_sign_after_the_host_is_not_userinfo(self):
+        skill = self.home / "skills" / "plain"
+        url = "https://git.example.org?ref=a@b"
+        for command in (
+            ["git", "init", "-q", str(skill)],
+            ["git", "-C", str(skill), "remote", "add", "origin", url],
+        ):
+            subprocess.run(command, check=True, capture_output=True)
+        result = self._run()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        skills = {s["name"]: s for s in json.loads(result.stdout)}
+        self.assertEqual(skills["plain"]["repo_url"], url)
+
     def test_missing_jq_is_an_error_not_an_empty_list(self):
         """`[]` with exit 0 would read as "no skills installed"."""
         bin_dir = self.home / "bin"
