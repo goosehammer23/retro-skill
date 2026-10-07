@@ -489,6 +489,17 @@ class ScanMaskingTest(unittest.TestCase):
         self.assertNotIn(token, res["raw"])
         self.assertEqual(res["json"]["findings"][0]["origin_session_id"], "[REDACTED]")
 
+    def test_frontmatter_keys_are_masked(self):
+        """An indented block under `name:` is parsed into a dict; its keys
+        are note text too."""
+        root, memory = _make_root()
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        token = "glpat-" + "k8" * 12
+        _write(memory, "feedback_key.md", f"---\nname:\n  {token}: x\n---\nbody\n")
+        res = _run_scan(memory_root=root)
+        self.assertNotIn(token, res["raw"])
+        self.assertEqual(res["json"]["findings"][0]["title"], {"[REDACTED]": "x"})
+
 
 class GlobalRulesMaskingTest(unittest.TestCase):
     def test_a_token_at_the_cut_is_masked_whole(self):

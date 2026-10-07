@@ -413,7 +413,7 @@ def _masked(value: Any) -> Any:
     if isinstance(value, str):
         return _masking.mask(value)
     if isinstance(value, dict):
-        return {key: _masked(item) for key, item in value.items()}
+        return {_masked(key): _masked(item) for key, item in value.items()}
     if isinstance(value, list):
         return [_masked(item) for item in value]
     return value

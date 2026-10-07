@@ -127,11 +127,18 @@ def _mask_opt(text: str | None) -> str | None:
 # collect() masks every string it returns on the way out, so text that came
 # in by a path without masking is covered too: a --feedback-file is used as it
 # stands, and any of its fields (state, author, path, references) is free text.
+class _MaskingParser(argparse.ArgumentParser):
+    """argparse quotes a rejected argument in its error; mask it first."""
+
+    def error(self, message: str):  # type: ignore[override]
+        super().error(_masking.mask(message))
+
+
 def _masked_text(value: Any) -> Any:
     if isinstance(value, str):
         return _masking.mask(value)
     if isinstance(value, dict):
-        return {k: _masked_text(v) for k, v in value.items()}
+        return {_masked_text(k): _masked_text(v) for k, v in value.items()}
     if isinstance(value, list):
         return [_masked_text(v) for v in value]
     return value
@@ -1378,7 +1385,7 @@ def _items_from_args(args, gitlab_host: str, listed: list[dict[str, Any]]):
 
 
 def main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(
+    parser = _MaskingParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--transcript-file", type=Path)
@@ -1422,7 +1429,7 @@ def main(argv: list[str]) -> int:
         parser.error("give --transcript-file, --ref, --feedback-file or --pr-list")
     since = parse_time(args.since) if args.since else None
     if args.since and since is None:
-        parser.error(_masking.mask(f"--since is not an ISO 8601 time: {args.since}"))
+        parser.error(f"--since is not an ISO 8601 time: {args.since}")
     gitlab_hosts = gitlab_hosts_from(args.gitlab_host, os.environ.get("GITLAB_HOST"))
     try:
         external = load_feedback(args.feedback_file)
