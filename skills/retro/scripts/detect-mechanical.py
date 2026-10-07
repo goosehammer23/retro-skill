@@ -108,6 +108,7 @@ BUILTIN_SLASH_COMMANDS = frozenset(
         "/config",
         "/cost",
         "/doctor",
+        "/effort",
         "/exit",
         "/help",
         "/init",
