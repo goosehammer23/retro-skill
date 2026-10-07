@@ -2423,6 +2423,18 @@ class PrListTest(unittest.TestCase):
         self.assertEqual((code, result, calls), (2, None, []))
         self.assertIn(f"{path}:2", err)
 
+    def test_a_refused_since_is_quoted_with_credentials_masked(self):
+        token = "glpat-" + "q6" * 12
+        err = io.StringIO()
+        with (
+            contextlib.redirect_stderr(err),
+            self.assertRaises(SystemExit) as exit_,
+        ):
+            crf.main(["x", "--pr-list", "unused", "--since", f"token={token}"])
+        self.assertEqual(exit_.exception.code, 2)
+        self.assertNotIn(token, err.getvalue())
+        self.assertIn("[REDACTED]", err.getvalue())
+
     def test_a_refused_line_is_quoted_with_credentials_masked(self):
         token = "glpat-" + "q5" * 12
         path = self._file(f"https://example.org/notes?private_token={token}")

@@ -1422,7 +1422,7 @@ def main(argv: list[str]) -> int:
         parser.error("give --transcript-file, --ref, --feedback-file or --pr-list")
     since = parse_time(args.since) if args.since else None
     if args.since and since is None:
-        parser.error(f"--since is not an ISO 8601 time: {args.since}")
+        parser.error(_masking.mask(f"--since is not an ISO 8601 time: {args.since}"))
     gitlab_hosts = gitlab_hosts_from(args.gitlab_host, os.environ.get("GITLAB_HOST"))
     try:
         external = load_feedback(args.feedback_file)
