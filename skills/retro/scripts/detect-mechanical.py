@@ -1268,7 +1268,7 @@ def signal_reread_same_file(tool_uses) -> list[dict]:
                 {
                     "signal": "A12",
                     "name": "reread_without_edit",
-                    "path": path,
+                    "path": _masking.mask(path),
                     "turns": read_turns,
                 }
             )

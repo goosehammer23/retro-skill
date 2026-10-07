@@ -241,7 +241,7 @@ retro-skill/
 │       ├── derive-session-scope.py   # repositories, artefacts and days a session touched
 │       ├── collect-review-findings.py # review, issue and ticket feedback on the session's PRs/MRs
 │       ├── feedback-contract.py      # validates supplied tracker feedback (--feedback-file)
-│       ├── mask-secrets.py           # credential masking for the transcript text three scripts emit
+│       ├── mask-secrets.py           # credential masking for the text five scripts quote
 │       ├── opencode-transcript.py    # renders an opencode session as layer-A JSONL
 │       ├── scan-memory-inventory.py  # Promote: memory backlog pre-pass
 │       ├── scan-cross-session.py     # layer-C JSONL scanner

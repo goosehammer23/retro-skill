@@ -82,7 +82,9 @@ With `--scope skill`, run the mechanical drift pre-pass first:
 `scripts/check-upstream-sources.py --skill-dir <repo>` probes every
 `[upstream]`-labelled link and every checkpoint `source:` URL (dead links →
 B14 candidates; a failed probe is transport, never "gone") and flags
-checkpoint `verified:` dates older than the max age for an LLM re-read.
+checkpoint `verified:` dates older than the max age for an LLM re-read. Only
+`https` links to hosts with public addresses are requested; any other link is
+reported as a failed probe, not as dead.
 
 With `--scope skill`, the audit is also a **reconciliation** pass: classify the
 skill's existing content by authority (upstream / code / org policy /

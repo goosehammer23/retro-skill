@@ -20,6 +20,7 @@ import json
 import subprocess
 import tempfile
 import time
+import typing
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
@@ -2422,6 +2423,38 @@ class PrListTest(unittest.TestCase):
         self.assertEqual((code, result, calls), (2, None, []))
         self.assertIn(f"{path}:2", err)
 
+    def test_a_refused_since_is_quoted_with_credentials_masked(self):
+        token = "glpat-" + "q6" * 12
+        err = io.StringIO()
+        with (
+            contextlib.redirect_stderr(err),
+            self.assertRaises(SystemExit) as exit_,
+        ):
+            crf.main(["x", "--pr-list", "unused", "--since", f"token={token}"])
+        self.assertEqual(exit_.exception.code, 2)
+        self.assertNotIn(token, err.getvalue())
+        self.assertIn("[REDACTED]", err.getvalue())
+
+    def test_an_argparse_error_is_quoted_with_credentials_masked(self):
+        token = "glpat-" + "q7" * 12
+        err = io.StringIO()
+        with (
+            contextlib.redirect_stderr(err),
+            self.assertRaises(SystemExit) as exit_,
+        ):
+            crf.main(["x", "--pr-list", "unused", "--output-format", token])
+        self.assertEqual(exit_.exception.code, 2)
+        self.assertNotIn(token, err.getvalue())
+        self.assertIn("[REDACTED]", err.getvalue())
+
+    def test_a_refused_line_is_quoted_with_credentials_masked(self):
+        token = "glpat-" + "q5" * 12
+        path = self._file(f"https://example.org/notes?private_token={token}")
+        code, _, err, _ = self._main("--pr-list", str(path))
+        self.assertEqual(code, 2)
+        self.assertNotIn(token, err)
+        self.assertIn("[REDACTED]", err)
+
 
 class MainTest(unittest.TestCase):
     def test_an_unparsable_since_is_an_error(self):
@@ -2444,6 +2477,180 @@ class DecodeTest(unittest.TestCase):
             crf.parse_time("2026-09-17T09:15:11.286+0000"),
             datetime(2026, 9, 17, 9, 15, 11, 286000, tzinfo=timezone.utc),
         )
+
+
+class GlabTokenScopeTest(unittest.TestCase):
+    """A token from the environment reaches glab only for the host it names."""
+
+    TOKENS: typing.ClassVar[dict[str, str]] = {
+        "GITLAB_TOKEN": "a",
+        "GITLAB_ACCESS_TOKEN": "b",
+        "OAUTH_TOKEN": "c",
+        "CI_JOB_TOKEN": "d",
+    }
+
+    def _env(self, host, **extra):
+        command = ["glab", "api", "user", "--hostname", host]
+        return crf.glab_env(command, {**self.TOKENS, "PATH": "/bin", **extra})
+
+    def test_token_variables_go_to_the_host_gitlab_host_names(self):
+        env = self._env("git.example.org", GITLAB_HOST="https://git.example.org/")
+        for name in ("GITLAB_TOKEN", "GITLAB_ACCESS_TOKEN", "OAUTH_TOKEN"):
+            self.assertEqual(env.get(name), self.TOKENS[name])
+
+    def test_token_variables_do_not_go_to_another_host(self):
+        env = self._env("gitlab.com", GITLAB_HOST="git.example.org")
+        for name in self.TOKENS:
+            self.assertNotIn(name, env)
+        self.assertEqual(env["PATH"], "/bin")
+
+    def test_glab_host_variables_are_read_in_glabs_order(self):
+        for extra in (
+            {"GITLAB_URI": "https://git.example.org/"},
+            {"GL_HOST": "git.example.org"},
+            {"GITLAB_HOST": "git.example.org", "GL_HOST": "gitlab.com"},
+        ):
+            with self.subTest(extra=extra):
+                self.assertEqual(
+                    self._env("git.example.org", **extra)["GITLAB_TOKEN"], "a"
+                )
+                self.assertNotIn("GITLAB_TOKEN", self._env("gitlab.com", **extra))
+
+    def test_without_gitlab_host_no_token_variable_is_passed(self):
+        env = self._env("gitlab.com")
+        for name in self.TOKENS:
+            self.assertNotIn(name, env)
+
+    def test_job_token_goes_only_to_the_ci_server(self):
+        self.assertEqual(
+            self._env("git.example.org", CI_SERVER_FQDN="git.example.org")[
+                "CI_JOB_TOKEN"
+            ],
+            "d",
+        )
+        self.assertNotIn(
+            "CI_JOB_TOKEN", self._env("gitlab.com", CI_SERVER_FQDN="git.example.org")
+        )
+
+    def test_other_commands_keep_their_environment(self):
+        env = crf.glab_env(["gh", "api", "user"], dict(self.TOKENS))
+        self.assertEqual(env, self.TOKENS)
+
+    def test_default_runner_passes_the_scoped_environment(self):
+        completed = subprocess.CompletedProcess([], 0, stdout="{}", stderr="")
+        with (
+            mock.patch.dict(
+                crf.os.environ,
+                {"GITLAB_TOKEN": "t", "GITLAB_HOST": "git.example.org"},
+            ),
+            mock.patch.object(crf.subprocess, "run", return_value=completed) as run,
+        ):
+            crf.default_runner(["glab", "api", "user", "--hostname", "gitlab.com"])
+            crf.default_runner(["glab", "api", "user", "--hostname", "git.example.org"])
+        first, second = (call.kwargs["env"] for call in run.call_args_list)
+        self.assertNotIn("GITLAB_TOKEN", first)
+        self.assertEqual(second["GITLAB_TOKEN"], "t")
+
+
+class CollectorMaskingTest(unittest.TestCase):
+    """Text from a forge is printed with credentials masked."""
+
+    TOKEN = "glpat-" + "x1" * 12
+
+    def test_finding_body_is_masked(self):
+        found = crf.finding("u", "review", "alice", "human", None, f"use {self.TOKEN}")
+        self.assertNotIn(self.TOKEN, found["body"])
+        self.assertIn("[REDACTED]", found["body"])
+
+    def test_error_of_an_unread_artefact_is_masked(self):
+        entry = crf._unread({"url": "u"}, "read_failed", f"RuntimeError: {self.TOKEN}")
+        self.assertNotIn(self.TOKEN, entry["error"])
+
+    def test_the_agents_last_reply_in_a_thread_is_masked(self):
+        thread = {
+            "path": "a.py",
+            "line": 3,
+            "isResolved": True,
+            "comments": {
+                "totalCount": 2,
+                "nodes": [
+                    {
+                        "author": {"login": "coderabbitai", "__typename": "Bot"},
+                        "createdAt": "2026-09-20T10:00:00Z",
+                        "body": "fix this",
+                        "url": "u1",
+                    },
+                    {
+                        "author": {"login": "me", "__typename": "User"},
+                        "createdAt": "2026-09-20T10:05:00Z",
+                        "body": f"done, rotated {self.TOKEN}",
+                        "url": "u2",
+                    },
+                ],
+            },
+        }
+        empty = {"totalCount": 0, "nodes": []}
+        raw = {
+            "data": {
+                "viewer": {"login": "me"},
+                "repository": {
+                    "pullRequest": {
+                        "url": "https://github.com/o/r/pull/1",
+                        "title": "t",
+                        "headRefName": "b",
+                        "reviewThreads": {"totalCount": 1, "nodes": [thread]},
+                        "reviews": empty,
+                        "comments": empty,
+                        "commits": empty,
+                        "closingIssuesReferences": empty,
+                    }
+                },
+            }
+        }
+        parsed = crf.parse_github_pr(raw, {"me"})
+        self.assertNotIn(self.TOKEN, json.dumps(parsed))
+        self.assertIn("[REDACTED]", parsed["findings"][0]["last_self_reply"])
+
+    def test_supplied_feedback_text_is_masked(self):
+        raw = _fixture("normalized-feedback.json")
+        raw["artefacts"][0]["title"] = f"Rotate {self.TOKEN}"
+        raw["artefacts"][0]["findings"][0]["body"] = f"the old key was {self.TOKEN}"
+        feedback = crf.contract.parse_document(raw)
+        url = next(iter(feedback["artefacts"]))
+        result = crf.collect([crf.parse_ref(url)], None, external=feedback)
+        self.assertNotIn(self.TOKEN, json.dumps(result))
+        self.assertIn("[REDACTED]", result["artefacts"][0]["title"])
+
+    def test_every_supplied_field_is_masked(self):
+        """A --feedback-file field is free text whatever its name."""
+        raw = _fixture("normalized-feedback.json")
+        artefact = raw["artefacts"][0]
+        artefact["url"] += f"?private_token={self.TOKEN}"
+        artefact["state"] = f"state {self.TOKEN}"
+        artefact["references"] = [
+            {"ref": f"ref {self.TOKEN}", "context": f"context {self.TOKEN}"}
+        ]
+        # The agent's own comments are not reported; change someone else's.
+        finding = next(f for f in artefact["findings"] if f["author_class"] != "self")
+        for key in ("source", "author", "path", "commit_after"):
+            finding[key] = f"{key} {self.TOKEN}"
+        feedback = crf.contract.parse_document(raw)
+        url = next(iter(feedback["artefacts"]))
+        result = crf.collect([crf.parse_ref(url)], None, external=feedback)
+        self.assertNotIn(self.TOKEN, json.dumps(result))
+        (changed,) = [
+            f for f in result["findings"] if f["source"] == "source [REDACTED]"
+        ]
+        self.assertEqual(changed["path"], "path [REDACTED]")
+        self.assertEqual(result["artefacts"][0]["state"], "state [REDACTED]")
+
+    def test_title_is_masked(self):
+        raw = _fixture("gitlab-mr.json")
+        raw["item"]["title"] = f"OPS-901: rotate {self.TOKEN}"
+        parsed = crf.parse_gitlab(raw, set())
+        self.assertNotIn(self.TOKEN, parsed["title"])
+        self.assertEqual(parsed["tickets"], ["OPS-901"])
+        self.assertIsNone(crf._mask_opt(None))
 
 
 if __name__ == "__main__":

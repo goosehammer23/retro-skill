@@ -24,6 +24,14 @@ A redirect is followed. When it ends on a different host, path or query (a
 login wall, a moved page), ``upstream_source_redirected`` names the final URL;
 a change of scheme alone or of a trailing slash is not reported.
 
+Only https URLs on public hosts are requested. A URL comes from the files of
+the skill under audit, so before each connection, including every redirect,
+the host is resolved and refused when any of its addresses is not globally
+routable (loopback, private, link-local, carrier-grade NAT, reserved);
+the connection then goes to the address that was checked. An http URL, a
+redirect to one, or a refused host is reported as ``upstream_probe_failed``.
+Proxy environment variables are not used.
+
 Probe discipline: a failed request is a transport fact before it is a
 finding. Only 404/410 count as ``upstream_source_dead``; timeouts, TLS
 errors, 403s and 5xx are emitted as ``upstream_probe_failed`` (unknown →
@@ -45,8 +53,10 @@ import argparse
 import concurrent.futures
 import datetime as _dt
 import http.client
+import ipaddress
 import json
 import re
+import socket
 import ssl
 import sys
 import urllib.error
@@ -161,17 +171,78 @@ def _moved(requested: str, final: str) -> bool:
     )
 
 
-def probe(url: str, timeout: float) -> tuple[str, int | None, str]:
-    """→ (verdict, status, detail); verdict ∈ ok|redirected|dead|probe_failed."""
+def _public_address(host: str, port: int) -> str:
+    """The first address `host` resolves to; OSError when any is not public."""
+    infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    if not infos:
+        raise OSError(f"{host} does not resolve")
+    for info in infos:
+        address = ipaddress.ip_address(str(info[4][0]).split("%", 1)[0])
+        mapped = getattr(address, "ipv4_mapped", None)
+        if not address.is_global or (mapped is not None and not mapped.is_global):
+            raise OSError(
+                f"{host} resolves to {address}, which is not a public address"
+            )
+    return str(infos[0][4][0])
+
+
+class _PublicHTTPSConnection(http.client.HTTPSConnection):
+    """Connects only to the public address it has just checked."""
+
+    def connect(self) -> None:
+        address = _public_address(self.host, self.port)
+        sock = socket.create_connection((address, self.port), self.timeout)
+        self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
+
+
+class _PublicHTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self, req):
+        return self.do_open(_PublicHTTPSConnection, req, context=self._context)
+
+
+class _HTTPSOnlyRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if urllib.parse.urlsplit(newurl).scheme != "https":
+            raise urllib.error.URLError(
+                f"redirect to a non-https URL refused: {newurl}"
+            )
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def public_https_opener() -> urllib.request.OpenerDirector:
+    """An opener that speaks https only, to public addresses, without proxies."""
     ctx = ssl.create_default_context()
     ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    opener = urllib.request.OpenerDirector()
+    for handler in (
+        urllib.request.UnknownHandler(),
+        urllib.request.HTTPDefaultErrorHandler(),
+        _HTTPSOnlyRedirects(),
+        urllib.request.HTTPErrorProcessor(),
+        _PublicHTTPSHandler(context=ctx),
+    ):
+        opener.add_handler(handler)
+    return opener
+
+
+def probe(
+    url: str, timeout: float, opener: urllib.request.OpenerDirector | None = None
+) -> tuple[str, int | None, str]:
+    """→ (verdict, status, detail); verdict ∈ ok|redirected|dead|probe_failed.
+
+    `opener` defaults to `public_https_opener()`; tests pass another one to
+    exercise the redirect verdicts against a local server."""
+    if opener is None:
+        if urllib.parse.urlsplit(url).scheme != "https":
+            return "probe_failed", None, "not requested: only https URLs are probed"
+        opener = public_https_opener()
     last_status: int | None = None
     for method in ("HEAD", "GET"):
         req = urllib.request.Request(
             url, method=method, headers={"User-Agent": USER_AGENT}
         )
         try:
-            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+            with opener.open(req, timeout=timeout) as resp:
                 final = resp.geturl()
                 if _moved(url, final):
                     return "redirected", resp.status, f"redirected to {final}"
@@ -296,13 +367,17 @@ def stale_findings(candidates: list[dict], max_age_days: int) -> list[dict]:
     return out
 
 
-def probe_findings(unique: dict[str, list[dict]], timeout: float) -> list[dict]:
+def probe_findings(
+    unique: dict[str, list[dict]],
+    timeout: float,
+    opener: urllib.request.OpenerDirector | None = None,
+) -> list[dict]:
     out: list[dict] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
         results = dict(
             zip(
                 sorted(unique),
-                pool.map(lambda u: probe(u, timeout), sorted(unique)),
+                pool.map(lambda u: probe(u, timeout, opener), sorted(unique)),
             )
         )
     for url, occs in sorted(unique.items()):
