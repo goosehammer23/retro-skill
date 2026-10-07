@@ -2472,6 +2472,18 @@ class GlabTokenScopeTest(unittest.TestCase):
             self.assertNotIn(name, env)
         self.assertEqual(env["PATH"], "/bin")
 
+    def test_glab_host_variables_are_read_in_glabs_order(self):
+        for extra in (
+            {"GITLAB_URI": "https://git.example.org/"},
+            {"GL_HOST": "git.example.org"},
+            {"GITLAB_HOST": "git.example.org", "GL_HOST": "gitlab.com"},
+        ):
+            with self.subTest(extra=extra):
+                self.assertEqual(
+                    self._env("git.example.org", **extra)["GITLAB_TOKEN"], "a"
+                )
+                self.assertNotIn("GITLAB_TOKEN", self._env("gitlab.com", **extra))
+
     def test_without_gitlab_host_no_token_variable_is_passed(self):
         env = self._env("gitlab.com")
         for name in self.TOKENS:

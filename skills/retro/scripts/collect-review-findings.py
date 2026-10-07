@@ -32,7 +32,7 @@ the feedback that overturns the rejection. A GitLab host is contacted only when
 named with `--gitlab-host` (default `$GITLAB_HOST`), because `glab` sends its
 token to whatever host it is given. A token in `GITLAB_TOKEN`,
 `GITLAB_ACCESS_TOKEN` or `OAUTH_TOKEN` reaches glab only on calls to the host
-`$GITLAB_HOST` names (and `CI_JOB_TOKEN` only on calls to `$CI_SERVER_FQDN`);
+`$GITLAB_HOST` (or `$GITLAB_URI`, `$GL_HOST`) names (and `CI_JOB_TOKEN` only on calls to `$CI_SERVER_FQDN`);
 for any other host glab runs without them and uses the credentials it stores
 for that host. Comment bodies and error lines pass through `mask-secrets.py`.
 
@@ -781,13 +781,24 @@ def _flatten(value: Any) -> list[dict[str, Any]]:
 GLAB_TOKEN_VARS = ("GITLAB_TOKEN", "GITLAB_ACCESS_TOKEN", "OAUTH_TOKEN")
 
 
+# glab reads its default host from the first of these that is set.
+GLAB_HOST_VARS = ("GITLAB_HOST", "GITLAB_URI", "GL_HOST")
+
+
 def _bare_host(value: str | None) -> str:
-    return (value or "").removeprefix("https://").removeprefix("http://").rstrip("/")
+    rest = (value or "").removeprefix("https://").removeprefix("http://")
+    return rest.split("/", 1)[0]
+
+
+def _token_host(environ: dict[str, str]) -> str:
+    """The host the token variables belong to: glab's default host."""
+    return next((_bare_host(environ[v]) for v in GLAB_HOST_VARS if environ.get(v)), "")
 
 
 def glab_env(command: list[str], environ: dict[str, str]) -> dict[str, str]:
     """The environment for `command`: a glab call keeps the token variables
-    only when its `--hostname` is the host `GITLAB_HOST` names, and
+    only when its `--hostname` is the host `GITLAB_HOST` (or `GITLAB_URI`,
+    `GL_HOST`) names, and
     `CI_JOB_TOKEN` only when it is `CI_SERVER_FQDN`."""
     env = dict(environ)
     if not command or command[0] != "glab":
@@ -795,7 +806,7 @@ def glab_env(command: list[str], environ: dict[str, str]) -> dict[str, str]:
     host = None
     if "--hostname" in command[:-1]:
         host = command[command.index("--hostname") + 1]
-    if not host or host != _bare_host(environ.get("GITLAB_HOST")):
+    if not host or host != _token_host(environ):
         for name in GLAB_TOKEN_VARS:
             env.pop(name, None)
     if not host or host != _bare_host(environ.get("CI_SERVER_FQDN")):
