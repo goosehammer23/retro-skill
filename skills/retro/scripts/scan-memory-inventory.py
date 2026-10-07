@@ -408,6 +408,9 @@ def cmd_scan(args) -> int:
     return 0
 
 
+PATH_FIELDS = frozenset({"source_path", "index_path"})
+
+
 def _masked(value: Any) -> Any:
     """Mask every string in a finding: all of its text comes from a note."""
     if isinstance(value, str):
@@ -415,6 +418,11 @@ def _masked(value: Any) -> Any:
     if isinstance(value, dict):
         masked: dict[Any, Any] = {}
         for key, item in value.items():
+            if key in PATH_FIELDS:
+                # A file path is what `drain` takes back; it is shown as it is,
+                # like `slugs_scanned[].path`.
+                masked[key] = item
+                continue
             name = _masked(key)
             # Two keys can mask to the same text; number the later ones so
             # no entry is dropped.

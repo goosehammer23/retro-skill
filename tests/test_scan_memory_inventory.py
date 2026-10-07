@@ -500,6 +500,14 @@ class ScanMaskingTest(unittest.TestCase):
         self.assertNotIn(token, res["raw"])
         self.assertEqual(res["json"]["findings"][0]["title"], {"[REDACTED]": "x"})
 
+    def test_the_source_path_stays_usable_for_drain(self):
+        """A slug can look like a credential; drain needs the real path."""
+        root, memory = _make_root("-home-u-projects-xoxb-slack-bot-integration")
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        path = _write(memory, "feedback_a.md", FEEDBACK)
+        res = _run_scan(memory_root=root)
+        self.assertEqual(res["json"]["findings"][0]["source_path"], str(path))
+
     def test_keys_that_mask_alike_are_all_kept(self):
         root, memory = _make_root()
         self.addCleanup(shutil.rmtree, root, ignore_errors=True)
