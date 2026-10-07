@@ -30,7 +30,11 @@ Every answer by somebody else inside a thread is its own `review-reply`
 finding: a human's "please do fix it" under a bot finding the agent rejected is
 the feedback that overturns the rejection. A GitLab host is contacted only when
 named with `--gitlab-host` (default `$GITLAB_HOST`), because `glab` sends its
-token to whatever host it is given.
+token to whatever host it is given. A token in `GITLAB_TOKEN`,
+`GITLAB_ACCESS_TOKEN` or `OAUTH_TOKEN` reaches glab only on calls to the host
+`$GITLAB_HOST` names (and `CI_JOB_TOKEN` only on calls to `$CI_SERVER_FQDN`);
+for any other host glab runs without them and uses the credentials it stores
+for that host. Comment bodies and error lines pass through `mask-secrets.py`.
 
 Every finding carries `source`, `author_class` (`self` · `bot` · `human`),
 `resolved` where the forge says so, and `commit_after`: the first commit on
@@ -101,6 +105,23 @@ def _load_contract():
 
 
 contract = _load_contract()
+
+
+def _load_masking():
+    spec = importlib.util.spec_from_file_location(
+        "mask_secrets", HERE / "mask-secrets.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_masking = _load_masking()
+
+
+def _mask_opt(text: str | None) -> str | None:
+    return None if text is None else _masking.mask(text)
+
 
 # Logins that are bots although GraphQL reports them as users, and GitLab
 # service accounts, which carry no bot flag at all: group/project access tokens
@@ -252,7 +273,7 @@ def finding(
         "author_class": klass,
         "created_at": created,
         "url": url,
-        "body": body or "",
+        "body": _masking.mask(body or ""),
         **extra,
     }
 
@@ -584,7 +605,7 @@ def parse_github_pr(raw: dict[str, Any], self_logins: set[str]) -> dict[str, Any
     native = {f"GH-{n}" for n in GH_AUTOLINK_RE.findall(text)}
     return {
         "url": url,
-        "title": pr.get("title"),
+        "title": _mask_opt(pr.get("title")),
         "branch": pr.get("headRefName"),
         "state": pr.get("state"),
         "commits": len(commits),
@@ -614,7 +635,7 @@ def parse_github_issue(raw: dict[str, Any], self_logins: set[str]) -> dict[str, 
     _gh_comments(issue, issue["url"], "issue-comment", None, self_logins, out)
     return {
         "url": issue["url"],
-        "title": issue.get("title"),
+        "title": _mask_opt(issue.get("title")),
         "state": issue.get("state"),
         "findings": out.findings,
         "self_comments": out.self_count,
@@ -731,7 +752,7 @@ def parse_gitlab(raw: dict[str, Any], self_logins: set[str]) -> dict[str, Any]:
     branch = item.get("source_branch") or ""
     return {
         "url": url,
-        "title": item.get("title"),
+        "title": _mask_opt(item.get("title")),
         "branch": branch or None,
         "state": item.get("state"),
         "commits": len(commits) if is_mr else None,
@@ -754,11 +775,44 @@ def _flatten(value: Any) -> list[dict[str, Any]]:
 # orchestration
 
 
+# glab reads its token from these variables for every host a call names
+# (its config lookup consults the environment before the host's own entry),
+# so they are passed only on calls to the host they were configured for.
+GLAB_TOKEN_VARS = ("GITLAB_TOKEN", "GITLAB_ACCESS_TOKEN", "OAUTH_TOKEN")
+
+
+def _bare_host(value: str | None) -> str:
+    return (value or "").removeprefix("https://").removeprefix("http://").rstrip("/")
+
+
+def glab_env(command: list[str], environ: dict[str, str]) -> dict[str, str]:
+    """The environment for `command`: a glab call keeps the token variables
+    only when its `--hostname` is the host `GITLAB_HOST` names, and
+    `CI_JOB_TOKEN` only when it is `CI_SERVER_FQDN`."""
+    env = dict(environ)
+    if not command or command[0] != "glab":
+        return env
+    host = None
+    if "--hostname" in command[:-1]:
+        host = command[command.index("--hostname") + 1]
+    if not host or host != _bare_host(environ.get("GITLAB_HOST")):
+        for name in GLAB_TOKEN_VARS:
+            env.pop(name, None)
+    if not host or host != _bare_host(environ.get("CI_SERVER_FQDN")):
+        env.pop("CI_JOB_TOKEN", None)
+    return env
+
+
 def default_runner(command: list[str]) -> Any:
     """Run a CLI that prints JSON. Raises RuntimeError on any failure."""
     try:
         out = subprocess.run(
-            command, capture_output=True, text=True, timeout=120, check=False
+            command,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+            env=glab_env(command, dict(os.environ)),
         )
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"{command[0]} timed out after {exc.timeout}s") from exc
@@ -967,7 +1021,12 @@ def _resolved(item: dict[str, Any], references: dict) -> dict[str, Any]:
 
 
 def _unread(record: dict[str, Any], status: str, error: str) -> dict[str, Any]:
-    return {**record, "fetched": False, "status": status, "error": error}
+    return {
+        **record,
+        "fetched": False,
+        "status": status,
+        "error": _masking.mask(error),
+    }
 
 
 def _read_item(item, record, supplied, run, self_logins, gitlab_hosts):

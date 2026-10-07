@@ -20,6 +20,7 @@ import json
 import subprocess
 import tempfile
 import time
+import typing
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
@@ -2444,6 +2445,90 @@ class DecodeTest(unittest.TestCase):
             crf.parse_time("2026-09-17T09:15:11.286+0000"),
             datetime(2026, 9, 17, 9, 15, 11, 286000, tzinfo=timezone.utc),
         )
+
+
+class GlabTokenScopeTest(unittest.TestCase):
+    """A token from the environment reaches glab only for the host it names."""
+
+    TOKENS: typing.ClassVar[dict[str, str]] = {
+        "GITLAB_TOKEN": "a",
+        "GITLAB_ACCESS_TOKEN": "b",
+        "OAUTH_TOKEN": "c",
+        "CI_JOB_TOKEN": "d",
+    }
+
+    def _env(self, host, **extra):
+        command = ["glab", "api", "user", "--hostname", host]
+        return crf.glab_env(command, {**self.TOKENS, "PATH": "/bin", **extra})
+
+    def test_token_variables_go_to_the_host_gitlab_host_names(self):
+        env = self._env("git.example.org", GITLAB_HOST="https://git.example.org/")
+        for name in ("GITLAB_TOKEN", "GITLAB_ACCESS_TOKEN", "OAUTH_TOKEN"):
+            self.assertEqual(env.get(name), self.TOKENS[name])
+
+    def test_token_variables_do_not_go_to_another_host(self):
+        env = self._env("gitlab.com", GITLAB_HOST="git.example.org")
+        for name in self.TOKENS:
+            self.assertNotIn(name, env)
+        self.assertEqual(env["PATH"], "/bin")
+
+    def test_without_gitlab_host_no_token_variable_is_passed(self):
+        env = self._env("gitlab.com")
+        for name in self.TOKENS:
+            self.assertNotIn(name, env)
+
+    def test_job_token_goes_only_to_the_ci_server(self):
+        self.assertEqual(
+            self._env("git.example.org", CI_SERVER_FQDN="git.example.org")[
+                "CI_JOB_TOKEN"
+            ],
+            "d",
+        )
+        self.assertNotIn(
+            "CI_JOB_TOKEN", self._env("gitlab.com", CI_SERVER_FQDN="git.example.org")
+        )
+
+    def test_other_commands_keep_their_environment(self):
+        env = crf.glab_env(["gh", "api", "user"], dict(self.TOKENS))
+        self.assertEqual(env, self.TOKENS)
+
+    def test_default_runner_passes_the_scoped_environment(self):
+        completed = subprocess.CompletedProcess([], 0, stdout="{}", stderr="")
+        with (
+            mock.patch.dict(
+                crf.os.environ,
+                {"GITLAB_TOKEN": "t", "GITLAB_HOST": "git.example.org"},
+            ),
+            mock.patch.object(crf.subprocess, "run", return_value=completed) as run,
+        ):
+            crf.default_runner(["glab", "api", "user", "--hostname", "gitlab.com"])
+            crf.default_runner(["glab", "api", "user", "--hostname", "git.example.org"])
+        first, second = (call.kwargs["env"] for call in run.call_args_list)
+        self.assertNotIn("GITLAB_TOKEN", first)
+        self.assertEqual(second["GITLAB_TOKEN"], "t")
+
+
+class CollectorMaskingTest(unittest.TestCase):
+    """Text from a forge is printed with credentials masked."""
+
+    TOKEN = "glpat-" + "x1" * 12
+
+    def test_finding_body_is_masked(self):
+        found = crf.finding("u", "review", "alice", "human", None, f"use {self.TOKEN}")
+        self.assertNotIn(self.TOKEN, found["body"])
+        self.assertIn("[REDACTED]", found["body"])
+
+    def test_error_of_an_unread_artefact_is_masked(self):
+        entry = crf._unread({"url": "u"}, "read_failed", f"RuntimeError: {self.TOKEN}")
+        self.assertNotIn(self.TOKEN, entry["error"])
+
+    def test_title_is_masked(self):
+        raw = _fixture("gitlab-mr.json")
+        raw["item"]["title"] = f"OPS-901: rotate {self.TOKEN}"
+        parsed = crf.parse_gitlab(raw, set())
+        self.assertNotIn(self.TOKEN, parsed["title"])
+        self.assertEqual(parsed["tickets"], ["OPS-901"])
+        self.assertIsNone(crf._mask_opt(None))
 
 
 if __name__ == "__main__":
