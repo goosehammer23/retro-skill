@@ -1431,7 +1431,9 @@ def main(argv: list[str]) -> int:
             args, gitlab_hosts[0], listed
         )
     except ValueError as exc:
-        print(exc, file=sys.stderr)
+        # The message quotes the rejected input: a --pr-list line or a
+        # --feedback-file URL, which can carry a token in its query string.
+        print(_masking.mask(str(exc)), file=sys.stderr)
         return 2
     since = since or start
 

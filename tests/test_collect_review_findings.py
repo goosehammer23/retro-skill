@@ -2423,6 +2423,14 @@ class PrListTest(unittest.TestCase):
         self.assertEqual((code, result, calls), (2, None, []))
         self.assertIn(f"{path}:2", err)
 
+    def test_a_refused_line_is_quoted_with_credentials_masked(self):
+        token = "glpat-" + "q5" * 12
+        path = self._file(f"https://example.org/notes?private_token={token}")
+        code, _, err, _ = self._main("--pr-list", str(path))
+        self.assertEqual(code, 2)
+        self.assertNotIn(token, err)
+        self.assertIn("[REDACTED]", err)
+
 
 class MainTest(unittest.TestCase):
     def test_an_unparsable_since_is_an_error(self):
@@ -2593,6 +2601,7 @@ class CollectorMaskingTest(unittest.TestCase):
         """A --feedback-file field is free text whatever its name."""
         raw = _fixture("normalized-feedback.json")
         artefact = raw["artefacts"][0]
+        artefact["url"] += f"?private_token={self.TOKEN}"
         artefact["state"] = f"state {self.TOKEN}"
         artefact["references"] = [
             {"ref": f"ref {self.TOKEN}", "context": f"context {self.TOKEN}"}
