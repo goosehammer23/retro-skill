@@ -4,10 +4,11 @@
 """
 mask-secrets.py — credential masking for text the scripts copy out of transcripts.
 
-Not a command. detect-mechanical.py, scan-cross-session.py and
-derive-session-scope.py load it by path (the file name is hyphenated like its
-siblings) and pass every piece of transcript text they emit through
-`squeeze()` or `mask()`. A transcript holds whatever went through the session —
+Not a command. detect-mechanical.py, scan-cross-session.py,
+derive-session-scope.py, collect-review-findings.py and scan-memory-inventory.py
+load it by path (the file name is hyphenated like its siblings) and pass every
+piece of transcript, forge or note text they emit through `squeeze()` or
+`mask()`. A transcript holds whatever went through the session —
 `GH_TOKEN=… gh pr create`, a failed push echoing a tokenised remote URL, a key
 pasted into a prompt — and the findings are what a retro quotes into memory
 files, issues and pull requests.
@@ -29,6 +30,12 @@ MARKER = "[REDACTED]"
 # that stays readable (the header name, the URL scheme); the rest is masked.
 ALTERNATIVES: dict[str, str] = {
     "gitlab_pat": r"\bglpat-[A-Za-z0-9_-]{20,}",
+    # GitLab's other prefixed tokens: deploy, runner, pipeline trigger, feed,
+    # CI build, incoming mail, SCIM/OAuth, agent.
+    "gitlab_other_token": r"\bgl(?:dt|rt|ptt|ft|cbt|imt|soat|agent)-[A-Za-z0-9_-]{20,}",
+    "huggingface_token": r"\bhf_[A-Za-z0-9]{30,}",
+    # Stripe secret and restricted keys; the publishable `pk_` key is public.
+    "stripe_key": r"\b[rs]k_(?:live|test)_[A-Za-z0-9]{16,}",
     "github_token": r"\bgh[pousr]_[A-Za-z0-9]{20,}",
     "github_fine_grained": r"\bgithub_pat_[A-Za-z0-9_]{22,}",
     # `sk-…`, `sk-ant-api03-…`, `sk-proj-…`. A digit and a 20-character run
@@ -52,6 +59,14 @@ ALTERNATIVES: dict[str, str] = {
     # a program's identifier (`{"PRIVATE-TOKEN": token}`) readable.
     "private_token_header": r"(?P<private_token_header_keep>(?i:\bprivate-token"
     r"[\"']?\s*:\s*[\"']?))(?=[A-Za-z0-9_.-]*\d)[A-Za-z0-9_.-]{20,}",
+    "api_key_header": r"(?P<api_key_header_keep>(?i:\bx-api-key[\"']?\s*:\s*[\"']?))"
+    r"(?!\$)[^\s'\"]+",
+    # The whole cookie list: `Cookie: a=1; b=2` masks both values.
+    "cookie_header": r"(?P<cookie_header_keep>(?i:\b(?:set-)?cookie[\"']?\s*:\s*[\"']?))"
+    r"(?!\$)[^\s'\";]+(?:;\s*[^\s'\";]+)*",
+    # A credential passed in a query string.
+    "query_credential": r"(?P<query_credential_keep>[?&](?i:access_token|private_token"
+    r"|api_key|apikey|token|password|client_secret)=)(?!\$)[^\s&#'\"]+",
     "jwt": r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*",
     # `https://user:token@host` — the userinfo is masked, scheme and host stay.
     # The user may be empty (`redis://:password@host`), and the password may
@@ -85,6 +100,19 @@ CURL_USER_OPTION = re.compile(
 )
 
 
+# `PASSWORD=…`, `export API_TOKEN=…`, `--db-password=…`: a value assigned to a
+# name ending in a secret word. A pass of its own, after the alternatives, for
+# the same reason as the curl pass: as an alternative it would start at the
+# name and take the match from the shape-specific alternative behind it
+# (`GH_TOKEN=ghp_…`). A value that is a variable (`$X`) or already masked
+# stays as it is; `PWD` is the working directory, not a password.
+SECRET_ASSIGNMENT = re.compile(
+    r"(?P<keep>(?<![A-Za-z0-9_])(?:[A-Za-z_][A-Za-z0-9_]*_)?"
+    r"(?i:password|passwd|secret|token|api_?key|access_key|private_key)"
+    r"\s*=\s*[\"']?)(?![\"']?\$)(?!\[REDACTED\])[^\s'\"]+"
+)
+
+
 def _mask_curl_users(command: re.Match[str]) -> str:
     return CURL_USER_OPTION.sub(lambda m: m["keep"] + MARKER, command.group(0))
 
@@ -96,7 +124,8 @@ def _replace(m: re.Match[str]) -> str:
 
 def mask(text: str) -> str:
     """`text` with every credential the patterns know replaced by MARKER."""
-    return CURL_COMMAND.sub(_mask_curl_users, SECRET.sub(_replace, text or ""))
+    masked = CURL_COMMAND.sub(_mask_curl_users, SECRET.sub(_replace, text or ""))
+    return SECRET_ASSIGNMENT.sub(lambda m: m["keep"] + MARKER, masked)
 
 
 def squeeze(text: str, limit: int) -> str:

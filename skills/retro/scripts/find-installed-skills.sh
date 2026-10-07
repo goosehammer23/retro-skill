@@ -140,6 +140,9 @@ for base in "${SEARCH_PATHS[@]}"; do
     # Trim trailing newlines/whitespace
     name="${name%$'\n'}"
     repo_url="${repo_url%$'\n'}"
+    # A clone made with a token in its URL (https://user:token@host/…) keeps
+    # it in remote.origin.url; print the URL without the userinfo.
+    repo_url=$(printf '%s' "$repo_url" | sed -E 's#^([A-Za-z][A-Za-z0-9+.-]*://)[^/]*@#\1#')
 
     $first || printf ','
     first=false

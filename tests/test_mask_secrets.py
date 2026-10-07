@@ -56,6 +56,15 @@ SAMPLES = {
     "npm_token": "npm_" + "Zx8" * 12,
     "google_api_key": "key AIza" + "Sy" + "Kq9" * 11,
     "aws_secret_key": "AWS_SECRET_" + "ACCESS_KEY=" + "Ab1/" * 10,
+    "gitlab_other_token": "deploy gl" + "dt-" + "Rk4" * 8 + " end",
+    "huggingface_token": "hub hf" + "_" + "Hq7" * 11,
+    "stripe_key": "stripe sk" + "_live_" + "St5" * 8,
+    "api_key_header": "curl -H 'X-API-" + "Key: " + "ak2" * 8 + "' u",
+    "cookie_header": "Cookie: session=" + "ck8" * 6 + "; theme=dark",
+    "query_credential": "https://api.example.org/v1?access_"
+    + "token="
+    + "qt6" * 8
+    + "&page=2",
 }
 SECRET_PART = {
     "gitlab_pat": "x1Y2z3x1Y2z3",
@@ -73,6 +82,12 @@ SECRET_PART = {
     "npm_token": "Zx8Zx8",
     "google_api_key": "Kq9Kq9",
     "aws_secret_key": "Ab1/Ab1/",
+    "gitlab_other_token": "Rk4Rk4",
+    "huggingface_token": "Hq7Hq7",
+    "stripe_key": "St5St5",
+    "api_key_header": "ak2ak2",
+    "cookie_header": "ck8ck8",
+    "query_credential": "qt6qt6",
 }
 
 NEGATIVES = [
@@ -95,7 +110,51 @@ NEGATIVES = [
     "AIzaShort is no key",
     "AWS_SECRET_ACCESS_KEY=$SECRET",
     "https://example.org:8443/path@x",
+    "the hf_ prefix and sk_live_ alone are no keys",
+    "X-API-Key header missing, Cookie header missing",
+    "curl -H 'X-API-Key: $KEY' -H 'Cookie: $C' https://example.org/?token=$T",
+    "https://example.org/search?q=token&page=2",
 ]
+
+
+class SecretAssignmentTest(unittest.TestCase):
+    """A value assigned to a name ending in a secret word is masked."""
+
+    def test_assignments_are_masked(self):
+        for text, secret in (
+            ("PASSWORD=" + "pw4" * 4 + " ./run", "pw4pw4"),
+            ("export API_TOKEN=" + "at3" * 5, "at3at3"),
+            ("DB_PASSWORD='" + "dp5" * 4 + "' make", "dp5dp5"),
+            ("mysqldump --password=" + "mp1" * 4, "mp1mp1"),
+            ("client_secret=" + "cs7" * 5, "cs7cs7"),
+            ("STRIPE_API_KEY=" + "sk9" * 5, "sk9sk9"),
+        ):
+            with self.subTest(text):
+                out = ms.mask(text)
+                self.assertNotIn(secret, out)
+                self.assertIn(ms.MARKER, out)
+                self.assertNotIn(secret, ms.squeeze(text, 1000))
+
+    def test_name_stays_readable(self):
+        self.assertEqual(
+            ms.mask("export API_TOKEN=abc123 && x"), "export API_TOKEN=[REDACTED] && x"
+        )
+
+    def test_variables_and_lookalikes_are_left_alone(self):
+        for text in (
+            "GITLAB_TOKEN=$GITLAB_TOKEN glab api user",
+            'PASSWORD="${DB_PASSWORD}"',
+            "PWD=/home/user/project",
+            "max_tokens=4096 and tokens=12",
+            "TOKEN_COUNT=3",
+        ):
+            with self.subTest(text):
+                self.assertEqual(ms.mask(text), text)
+
+    def test_a_shape_match_is_not_masked_twice(self):
+        self.assertEqual(
+            ms.mask(SAMPLES["github_token"]), "GH_TOKEN=[REDACTED] gh pr create"
+        )
 
 
 class AlternativesTest(unittest.TestCase):
@@ -243,6 +302,35 @@ class DetectMechanicalFieldsTest(unittest.TestCase):
             {"type": "assistant", "message": {"content": [use]}},
             {"type": "user", "message": {"content": [res]}},
         ]
+
+    def test_reread_path_is_masked(self):
+        path_with_secret = "/srv/backup/DB_PASSWORD=" + "Rr8" * 4 + "/dump.sql"
+        events = []
+        for tool_id in ("r1", "r2"):
+            use = {"type": "tool_use", "id": tool_id, "name": "Read"}
+            use["input"] = {"file_path": path_with_secret}
+            res = {"type": "tool_result", "tool_use_id": tool_id, "content": "x"}
+            events += [
+                {"type": "assistant", "message": {"content": [use]}},
+                {"type": "user", "message": {"content": [res]}},
+            ]
+        out = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPTS / "detect-mechanical.py"),
+                "--transcript-file",
+                str(self._transcript(events)),
+                "--signals",
+                "A12",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        finding = json.loads(out)["findings"][0]
+        self.assertEqual(finding["signal"], "A12")
+        self.assertNotIn("Rr8Rr8", out)
+        self.assertEqual(finding["path"], "/srv/backup/DB_PASSWORD=[REDACTED]")
 
     def test_issue_140_failed_pr_create_prints_no_token(self):
         # The issue's reproduction: the token sits in the command and again in
