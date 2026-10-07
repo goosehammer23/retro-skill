@@ -474,6 +474,21 @@ class ScanMaskingTest(unittest.TestCase):
         self.assertIn("[REDACTED]", finding["how_to_apply"])
 
 
+class GlobalRulesMaskingTest(unittest.TestCase):
+    def test_a_token_at_the_cut_is_masked_whole(self):
+        root, _memory = _make_root()
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        token = "glpat-" + "Ab1" * 10
+        rules = root / "CLAUDE.md"
+        rules.write_text(
+            "## Rule\n\n" + "x" * 175 + f" use {token}\n", encoding="utf-8"
+        )
+        res = _run_scan(
+            memory_root=root, include_global_rules=True, global_rules_file=rules
+        )
+        self.assertNotIn("glpat-Ab1", res["raw"])
+
+
 class PruneIndexLineTest(unittest.TestCase):
     def test_sole_link_drops_line(self):
         self.assertIsNone(smi._prune_index_line("- [x](a.md) — hook\n", "a.md"))

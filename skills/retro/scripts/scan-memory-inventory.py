@@ -344,7 +344,9 @@ def _global_rules_findings(rules_file: Path) -> list[dict[str, Any]]:
                     raw_section.encode("utf-8")
                 ).hexdigest(),
                 "title": title,
-                "description": body.splitlines()[0][:200],
+                # Masked before it is cut: a token cut short no longer matches
+                # its pattern, and its head would be printed.
+                "description": _masking.mask(body.splitlines()[0])[:200],
                 "why": _extract_section(body, WHY_MARKER) or "",
                 "how_to_apply": _extract_section(body, HOWTO_MARKER) or "",
                 "current_location": "global-claude-md",
