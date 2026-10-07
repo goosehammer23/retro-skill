@@ -12,8 +12,12 @@ import importlib.util
 import shutil
 import tempfile
 import threading
+import typing
 import unittest
+import urllib.error
+import urllib.request
 from pathlib import Path
+from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -130,7 +134,10 @@ class TestStaleFindings(unittest.TestCase):
 class _Redirects(http.server.BaseHTTPRequestHandler):
     """`/moved` → a login page, `/slash` → itself plus `/`, everything else 200."""
 
+    requests: typing.ClassVar[list[str]] = []
+
     def _answer(self):
+        _Redirects.requests.append(self.path)
         target = {"/moved": "/login?next=moved", "/slash": "/slash/"}.get(self.path)
         if target:
             self.send_response(301)
@@ -153,21 +160,114 @@ class TestProbeRedirects(unittest.TestCase):
         self.addCleanup(server.server_close)
         self.addCleanup(server.shutdown)
         self.base = f"http://127.0.0.1:{server.server_port}"
+        # The default opener refuses this server (http, loopback); these tests
+        # are about the redirect verdicts, so they bring a plain one.
+        self.opener = urllib.request.build_opener()
 
     def test_redirect_to_another_path_is_reported(self):
-        verdict, _status, detail = cus.probe(f"{self.base}/moved", timeout=5)
+        verdict, _status, detail = cus.probe(
+            f"{self.base}/moved", timeout=5, opener=self.opener
+        )
         self.assertEqual(verdict, "redirected")
         self.assertIn("/login?next=moved", detail)
 
     def test_trailing_slash_redirect_and_plain_page_are_ok(self):
         for path in ("/slash", "/page"):
             with self.subTest(path=path):
-                self.assertEqual(cus.probe(f"{self.base}{path}", timeout=5)[0], "ok")
+                self.assertEqual(
+                    cus.probe(f"{self.base}{path}", timeout=5, opener=self.opener)[0],
+                    "ok",
+                )
 
     def test_redirect_becomes_its_own_finding(self):
         occurrence = {"file": "references/a.md", "line": 3, "origin": "markdown"}
-        findings = cus.probe_findings({f"{self.base}/moved": [occurrence]}, timeout=5)
+        findings = cus.probe_findings(
+            {f"{self.base}/moved": [occurrence]}, timeout=5, opener=self.opener
+        )
         self.assertEqual([f["name"] for f in findings], ["upstream_source_redirected"])
+
+
+class TestProbeTargets(unittest.TestCase):
+    """Only https URLs on public addresses are requested."""
+
+    def setUp(self):
+        server = http.server.HTTPServer(("127.0.0.1", 0), _Redirects)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        self.port = server.server_port
+        _Redirects.requests = []
+
+    @staticmethod
+    def _resolves_to(*addresses):
+        def fake(host, port, *args, **kwargs):
+            return [(2, 1, 6, "", (a, port)) for a in addresses]
+
+        return mock.patch.object(cus.socket, "getaddrinfo", side_effect=fake)
+
+    def test_http_url_is_not_requested(self):
+        verdict, _status, detail = cus.probe(f"http://127.0.0.1:{self.port}/page", 5)
+        self.assertEqual(verdict, "probe_failed")
+        self.assertIn("only https", detail)
+        self.assertEqual(_Redirects.requests, [])
+
+    def test_loopback_https_url_is_not_connected(self):
+        verdict, _status, detail = cus.probe(f"https://127.0.0.1:{self.port}/page", 5)
+        self.assertEqual(verdict, "probe_failed")
+        self.assertIn("not a public address", detail)
+        self.assertEqual(_Redirects.requests, [])
+
+    def test_host_with_a_non_public_address_is_refused(self):
+        for addresses in (
+            ("169.254.169.254",),
+            ("10.0.0.7",),
+            ("100.64.0.1",),
+            ("::1",),
+            ("::ffff:127.0.0.1",),
+            ("93.184.215.14", "192.168.1.1"),
+        ):
+            with (
+                self.subTest(addresses=addresses),
+                self._resolves_to(*addresses),
+                self.assertRaisesRegex(OSError, "not a public address"),
+            ):
+                cus._public_address("docs.example.org", 443)
+
+    def test_host_with_public_addresses_is_connected_to_the_checked_one(self):
+        with self._resolves_to("93.184.215.14", "93.184.215.15"):
+            self.assertEqual(
+                cus._public_address("docs.example.org", 443), "93.184.215.14"
+            )
+
+    def test_redirect_to_http_is_refused(self):
+        handler = cus._HTTPSOnlyRedirects()
+        request = urllib.request.Request("https://docs.example.org/a")
+        with self.assertRaisesRegex(urllib.error.URLError, "non-https"):
+            handler.redirect_request(
+                request, None, 302, "Found", {}, "http://docs.example.org/b"
+            )
+        followed = handler.redirect_request(
+            request, None, 302, "Found", {}, "https://docs.example.org/b"
+        )
+        self.assertEqual(followed.full_url, "https://docs.example.org/b")
+
+    def test_redirect_to_a_non_public_host_is_refused(self):
+        """Every connection, including one a redirect asks for, is checked."""
+        opener = cus.public_https_opener()
+        with (
+            self._resolves_to("127.0.0.1"),
+            self.assertRaisesRegex(urllib.error.URLError, "not a public address"),
+        ):
+            opener.open("https://docs.example.org/", timeout=5)
+
+    def test_default_opener_does_not_use_a_proxy(self):
+        handlers = cus.public_https_opener().handlers
+        self.assertFalse(
+            any(isinstance(h, urllib.request.ProxyHandler) for h in handlers)
+        )
+        self.assertFalse(
+            any(isinstance(h, urllib.request.HTTPHandler) for h in handlers)
+        )
 
 
 class TestUrlCleanup(unittest.TestCase):
